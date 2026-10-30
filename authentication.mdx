@@ -1,0 +1,84 @@
+---
+title: "Get your API key and authenticate requests"
+description: "Learn how to get your free MTA API key, store it as an environment variable, and pass it to the mta-js client to authenticate every request."
+sidebarTitle: "Authentication"
+---
+
+mta-js uses an API key from [mtaapi.dev](https://www.mtaapi.dev) — the hosted version of this SDK — to authenticate every data request. You pass the key once when you create the `MTA` client, and the SDK handles the rest automatically. This page explains how to get a key, store it safely, and troubleshoot authentication failures.
+
+<Warning>
+  Never hardcode your API key directly in source code. If you commit a key to a public repository, anyone can use it to make requests on your behalf. Always load keys from environment variables.
+</Warning>
+
+## Get your API key
+
+API keys are free and issued through [mtaapi.dev](https://www.mtaapi.dev). Using the hosted API is the **fastest and easiest way** to use mta-js — no MTA developer registration, no BusTime key, no GTFS imports.
+
+1. Go to [mtaapi.dev](https://www.mtaapi.dev) and sign up for a free account.
+2. Copy your API key from the dashboard.
+
+Your key is a long alphanumeric string. Keep it somewhere safe — you'll add it to your environment in the next step.
+
+<Note>
+  Prefer to self-host and call MTA feeds directly? See [Direct MTA feeds](/#direct-mta-feeds) on the Quick Start page. The rest of this page assumes you're using the hosted [mtaapi.dev](https://www.mtaapi.dev) API.
+</Note>
+
+## Configure your environment
+
+Store your API key as an environment variable so it stays out of your source code.
+
+Add the following line to a `.env` file at the root of your project:
+
+```bash .env
+MTA_API_KEY=your_api_key_here
+```
+
+Then make sure `.env` is listed in your `.gitignore`:
+
+```bash .gitignore
+.env
+```
+
+<Tip>
+  Most JavaScript frameworks (Next.js, Remix, Astro) and runtimes load `.env` files automatically. For plain Node.js projects, install [dotenv](https://github.com/motdotla/dotenv) and call `require('dotenv').config()` at the top of your entry file, or use the `--env-file` flag available in Node.js 20\+.
+</Tip>
+
+## Initialize the client
+
+Pass your API key to the `MTA` constructor as `apiKey`. With an `apiKey` set, requests are routed to `https://www.mtaapi.dev/api/v1` automatically.
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+```
+
+Create one client instance and reuse it across your application. Instantiating multiple clients is unnecessary and won't improve performance.
+
+If you're working in a serverless environment (Vercel Functions, Cloudflare Workers, AWS Lambda), initialize the client inside the request handler to ensure your environment variables are available at invocation time:
+
+```typescript
+import { MTA } from 'mta-js'
+
+export async function GET(request: Request) {
+  const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+  const arrivals = await mta.subway.arrivals({ stopId: 'A27', route: 'A' })
+  return Response.json(arrivals)
+}
+```
+
+## Authentication errors
+
+If your API key is missing, incorrect, or expired, the API returns an HTTP error and mta-js surfaces it as a thrown error.
+
+| Status code | Meaning |
+| --- | --- |
+| `401 Unauthorized` | The API key was not provided or is malformed. Check that `MTA_API_KEY` is set in your environment and that you're passing it correctly to the constructor. |
+| `403 Forbidden` | The API key is recognized but not authorized to access the requested resource. Your key may have expired or been revoked. |
+
+**Troubleshooting steps:**
+
+1. Confirm the environment variable is set by logging `process.env.MTA_API_KEY` before initializing the client. It should not be `undefined`.
+2. Double-check that the key you copied from [mtaapi.dev](https://www.mtaapi.dev) does not have leading or trailing whitespace.
+3. If you recently regenerated your key, update it in every environment where it's used (local `.env`, hosting platform secrets, CI/CD variables).
+4. If the problem persists, log in to [mtaapi.dev](https://www.mtaapi.dev) to verify your key is still active.

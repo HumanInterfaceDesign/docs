@@ -1,0 +1,212 @@
+---
+title: "mta-js SDK reference: all namespaces and methods"
+description: "Explore the full mta-js SDK method surface, organized by namespace: subway arrivals, bus positions, service alerts, and nearby stop lookups."
+sidebarTitle: "Overview"
+---
+
+The mta-js SDK exposes four namespaces on the `MTA` client — `subway`, `bus`, `alerts`, and `stops` — each covering a different aspect of NYC transit data. The `subway` namespace has two methods (`arrivals()` and `direction()`); the others have one each. Every namespace method is async, returns typed results, and requires only a single initialized client to access the full API surface.
+
+<CardGroup cols={2}>
+  <Card title="Subway" icon="train" href="/api-reference/subway">
+    `subway.arrivals()` — real-time arrival predictions for any subway stop and route.
+  </Card>
+
+  <Card title="Direction" icon="compass" href="/api-reference/direction">
+    `subway.direction()` — resolve a rider's destination to a north/south direction.
+  </Card>
+
+  <Card title="Bus" icon="bus" href="/api-reference/bus">
+    `bus.arrivals()` and `bus.vehicles()` — live arrivals and vehicle positions for any MTA bus route.
+  </Card>
+
+  <Card title="Alerts" icon="alert-triangle" href="/api-reference/alerts">
+    `alerts.current()` — current service alerts including delays and planned work.
+  </Card>
+
+  <Card title="Stops" icon="map-pin" href="/api-reference/stops">
+    `stops.near()` — find nearby subway and bus stops by geographic coordinates.
+  </Card>
+</CardGroup>
+
+## Client initialization
+
+Create a single `MTA` instance at startup and reuse it throughout your application. The constructor accepts an options object — pass an `apiKey` from [mtaapi.dev](https://www.mtaapi.dev) for the hosted API, or `busTimeKey` \+ `databaseUrl` to run self-hosted.
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+```
+
+The TypeScript signature for the constructor is:
+
+```typescript
+interface MTAOptions {
+  apiKey?: string           // hosted mtaapi.dev API key
+  apiBaseUrl?: string       // override hosted API base URL
+  busTimeKey?: string       // self-hosted: MTA BusTime key
+  databaseUrl?: string      // self-hosted: SQLite or libSQL/Turso URL
+  databaseAuthToken?: string
+  databaseLocalPath?: string
+}
+
+class MTA {
+  constructor(options: MTAOptions): MTA
+
+  subway: SubwayNamespace   // arrivals(), direction()
+  bus: BusNamespace         // arrivals(), vehicles()
+  alerts: AlertsNamespace   // current()
+  stops: StopsNamespace     // near()
+}
+```
+
+### Core exported types
+
+The following types are exported from `mta-js` and cover the full shape of SDK responses.
+
+```typescript
+// Typed ID utilities — accept any known value with autocomplete, while staying
+// permissive for future routes/stops. The pattern is: KnownRoute | (string & {})
+type AutocompleteString<TKnown extends string> = TKnown | (string & {})
+
+// Known* unions are code-generated from the hosted GTFS snapshot (./generated)
+type RouteId      = AutocompleteString<KnownRoute>
+type SubwayRoute  = AutocompleteString<KnownSubwayRoute>
+type BusRoute     = AutocompleteString<KnownBusRoute>
+type StopId       = AutocompleteString<KnownStopId>
+type SubwayStopId = AutocompleteString<KnownSubwayStopId>
+type BusStopId    = AutocompleteString<KnownBusStopId>
+
+type TransitMode = 'subway' | 'bus' | 'lirr' | 'metro-north'
+
+// Feed directions — NYCT uses north/south even on east-west lines
+type Direction = 'north' | 'south' | 'east' | 'west' | 'unknown'
+type SubwayResolvedDirection = 'north' | 'south'
+
+// Headsigns keyed by direction; values are arrays of headsign strings
+type DirectionHeadsigns = Record<string, string[]>
+
+interface Route {
+  id: string
+  shortName?: string
+  longName?: string
+  color?: string
+  textColor?: string
+  type?: number
+}
+
+interface Stop {
+  id: string
+  name: string
+  displayName?: string
+  lat?: number
+  lon?: number
+  parentStation?: string
+  parentId?: string
+  mode?: TransitMode
+}
+
+// A Route plus the headsign/direction metadata served at a given stop
+type ServedRoute = Route & {
+  headsigns?: string[]
+  directionHeadsigns?: DirectionHeadsigns
+  directions?: number[]
+}
+
+// Returned by mta.stops.near()
+type NearbyStop = Stop & {
+  distanceMeters?: number
+  servedRoutes?: ServedRoute[]
+  routeMatch?: boolean
+  routeHeadsigns?: string[]
+  directionHeadsigns?: DirectionHeadsigns
+  note?: string
+}
+
+// Returned by mta.subway.arrivals() and mta.bus.arrivals()
+interface Arrival {
+  mode: TransitMode
+  route: Route
+  stop: Stop
+  direction: Direction
+  destination?: string
+  displayDirection?: string
+  headsign?: string
+  arrivalTime: string        // ISO 8601
+  departureTime?: string     // ISO 8601
+  minutes: number
+  tripId?: string
+  realtime: boolean
+  source: 'mta-gtfs-rt' | 'mta-bustime'
+  raw?: unknown
+}
+
+// Query + result for mta.subway.direction()
+interface SubwayDirectionQuery {
+  route: SubwayRoute
+  fromStopId: SubwayStopId
+  destination: string
+}
+
+interface SubwayDirectionResolution {
+  route: Route
+  destination: string
+  normalizedDestination: string
+  resolved: boolean
+  direction?: SubwayResolvedDirection
+  displayDirection?: string
+  terminal?: string
+  fromStop?: Stop
+  destinationStop?: Stop
+  matches?: Stop[]
+  reason?: string
+}
+```
+
+<Tip>
+  Store your API key in an environment variable rather than hardcoding it. Use a `.env` file locally and your deployment platform's secret manager in production.
+</Tip>
+
+## Error handling
+
+All SDK methods throw a typed `MtaError` when the request fails. Wrap calls in a `try/catch` block and inspect the `code` property to handle specific failure modes.
+
+```typescript
+import { MTA, MtaError } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+try {
+  const arrivals = await mta.subway.arrivals({ stopId: 'A27', route: 'A' })
+  console.log(arrivals)
+} catch (err) {
+  if (err instanceof MtaError) {
+    switch (err.code) {
+      case 'INVALID_API_KEY':
+        console.error('Check your MTA_API_KEY environment variable.')
+        break
+      case 'STOP_NOT_FOUND':
+        console.error('The stop ID does not exist.')
+        break
+      case 'RATE_LIMITED':
+        console.error('Too many requests — slow down and retry.')
+        break
+      default:
+        console.error(`MTA error ${err.code}: ${err.message}`)
+    }
+  } else {
+    throw err
+  }
+}
+```
+
+Common error codes returned by the SDK:
+
+| Code | Description |
+| --- | --- |
+| `INVALID_API_KEY` | The API key is missing, malformed, or revoked. |
+| `STOP_NOT_FOUND` | The requested stop ID does not exist. |
+| `ROUTE_NOT_FOUND` | The requested route ID does not exist. |
+| `RATE_LIMITED` | You have exceeded the allowed request rate. |
+| `FEED_UNAVAILABLE` | The upstream MTA feed is temporarily unavailable. |
+| `NETWORK_ERROR` | A network-level failure occurred before the request completed. |

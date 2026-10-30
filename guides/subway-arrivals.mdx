@@ -1,0 +1,157 @@
+---
+title: "Fetch and display real-time subway arrivals"
+description: "Fetch live subway arrival predictions for any MTA stop and route using mta-js, process timestamps, and display upcoming trains in your app."
+sidebarTitle: "Subway Arrivals"
+---
+
+This guide walks you through fetching real-time subway arrivals for a specific stop and route. You will initialize the `MTA` client, call `mta.subway.arrivals()`, and process the response to display upcoming trains in your application.
+
+## Prerequisites
+
+- `mta-js` installed in your project (`npm install mta-js`)
+- An MTA API key set as `MTA_API_KEY` in your environment
+
+<Steps>
+  <Step title="Find your stop ID">
+    Every MTA subway stop has a unique stop ID. Stop IDs follow a letter-and-number format where the letter generally corresponds to the train line complex and the number identifies the specific station.
+
+    A few examples to get you oriented:
+
+    | Stop ID | Station |
+    | --- | --- |
+    | `A27` | Howard Beach–JFK Airport (A train) |
+    | `R16` | Times Square–42 St (N/Q/R trains) |
+    | `120` | 96 St (1/2/3 trains) |
+    | `D14` | Atlantic Av–Barclays Ctr (B/D/N/Q trains) |
+
+    You can look up stop IDs in the [MTA GTFS Static Data](https://api.mta.info/#/subwayRealTimeFeeds) or reference the `stops.txt` file in the MTA's GTFS feed. Pass the stop ID as a string exactly as it appears in those resources.
+  </Step>
+  <Step title="Call mta.subway.arrivals()">
+    Import the `MTA` client and call `mta.subway.arrivals()` with the `stopId` and `route` you want to query.
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    
+    const data = await mta.subway.arrivals({
+      stopId: 'A27',
+      route: 'A',
+    })
+    ```
+
+    Both `stopId` and `route` are required. The `route` value is the train letter or number as it appears on signage (e.g., `'A'`, `'1'`, `'N'`, `'L'`).
+  </Step>
+  <Step title="Process the response">
+    The response is an array of `Arrival` objects. Each entry includes the route and stop as structured objects, the predicted arrival time as an ISO 8601 string, a `minutes` field pre-computed for you, and optional `destination` / `displayDirection` fields for building human-readable UI.
+
+    ```typescript
+    for (const arrival of data) {
+      const label = arrival.displayDirection ?? arrival.destination ?? arrival.direction
+      console.log(`${arrival.route.shortName} — ${label} — ${arrival.minutes} min`)
+    }
+    ```
+
+    Use `displayDirection` first (e.g. `"toward 8 Av"`), falling back to `destination` (the raw headsign), and finally the raw `direction` string.
+
+    **Example response:**
+
+    ```json
+    [
+      {
+        "mode": "subway",
+        "route": { "id": "A", "shortName": "A", "color": "#0039A6" },
+        "stop": { "id": "A27", "name": "Howard Beach-JFK Airport", "displayName": "Howard Beach–JFK Airport" },
+        "direction": "north",
+        "destination": "Inwood-207 St",
+        "displayDirection": "toward Inwood-207 St",
+        "arrivalTime": "2026-05-29T18:37:00.000Z",
+        "minutes": 4,
+        "tripId": "AFA25GEN-A078-Sunday-00_000600_A..N03R",
+        "realtime": true,
+        "source": "mta-gtfs-rt"
+      }
+    ]
+    ```
+  </Step>
+  <Step title="Handle empty results and errors">
+    When no trains are scheduled—late at night or during a service gap—`arrivals` will be an empty array. Wrap your call in a try/catch and check for an empty result before rendering.
+
+    ```typescript
+    try {
+      const data = await mta.subway.arrivals({ stopId: 'A27', route: 'A' })
+    
+      if (data.length === 0) {
+        console.log('No upcoming arrivals at this stop.')
+        return
+      }
+    
+      for (const arrival of data) {
+        // display each arrival
+      }
+    } catch (error) {
+      console.error('Failed to fetch arrivals:', error)
+    }
+    ```
+  </Step>
+</Steps>
+
+## Complete example
+
+The function below ties all the steps together into a reusable arrivals display function.
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+interface ArrivalDisplay {
+  direction: string
+  minutesAway: number
+  tripId?: string
+}
+
+async function getSubwayArrivals(
+  stopId: string,
+  route: string
+): Promise<ArrivalDisplay[]> {
+  const arrivals = await mta.subway.arrivals({ stopId, route })
+
+  return arrivals
+    .filter((a) => a.minutes >= 0)
+    .map((a) => ({
+      tripId: a.tripId,
+      direction: a.displayDirection ?? a.destination ?? a.direction,
+      minutesAway: a.minutes,
+    }))
+}
+
+// Display arrivals at Howard Beach on the A train
+const arrivals = await getSubwayArrivals('A27', 'A')
+
+for (const arrival of arrivals) {
+  console.log(
+    `${arrival.direction} — arriving in ${arrival.minutesAway} min (trip ${arrival.tripId})`
+  )
+}
+```
+
+<Tip>
+  MTA real-time data updates roughly every 30 seconds. Poll on the same interval to keep your UI current without overloading the API.
+
+  ```typescript
+  // Refresh arrivals every 30 seconds
+  setInterval(async () => {
+    const arrivals = await getSubwayArrivals('A27', 'A')
+    renderArrivals(arrivals)
+  }, 30_000)
+  ```
+</Tip>
+
+<Note>
+  The `direction` field uses NYCT's `'north'` / `'south'` values even on east-west lines. For the L train, `mta-js` also accepts rider-facing `'east'` / `'west'` aliases as query input and maps them to the underlying feed directions. For display, prefer `displayDirection` (e.g. `"toward 8 Av"`) or `destination` over the raw direction string.
+</Note>
+
+<Tip>
+  If your rider enters _where they want to go_ rather than a compass direction, use [`mta.subway.direction()`](/api-reference/direction) to resolve a destination like `"Union Sq"` into the `north` / `south` value, then pass it straight to `mta.subway.arrivals({ ..., direction })`.
+</Tip>

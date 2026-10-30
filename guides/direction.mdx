@@ -1,0 +1,169 @@
+---
+title: "Turn a rider's destination into a direction"
+description: 'Use mta.subway.direction() to resolve a rider-facing destination like "Union Sq" into the north/south feed direction, then feed it straight into subway arrivals.'
+sidebarTitle: "Trip Direction"
+---
+
+NYC subway realtime feeds describe trains by NYCT's `north` / `south` direction — even on east–west lines like the L. But riders don't think in compass directions; they think "I'm trying to get to Union Sq." This guide shows you how to use `mta.subway.direction()` to translate a destination string into the feed direction, then use that direction to fetch the right arrivals.
+
+<Note>
+  `mta.subway.direction()` requires a hosted `apiKey`. It resolves destinations against the hosted API's static GTFS route order and is not available in direct-feed mode. See [Authentication](/authentication) to get a key.
+</Note>
+
+## Prerequisites
+
+- `mta-js` installed (`npm install mta-js`)
+- An MTA API key set as `MTA_API_KEY` in your environment
+
+<Steps>
+  <Step title="Resolve a destination to a direction">
+    Call `mta.subway.direction()` with the `route` the rider is on, the `fromStopId` they're departing from, and the `destination` they typed. The method resolves the destination against the route's stop order and returns the `north` / `south` direction that heads toward it.
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    
+    // A rider at Bedford Av (L08) wants to reach Union Sq — which way do they go?
+    const resolution = await mta.subway.direction({
+      route: 'L',
+      fromStopId: 'L08',
+      destination: 'Union Sq',
+    })
+    ```
+
+    All three parameters are required:
+
+    | Parameter | Type | Description |
+    | --- | --- | --- |
+    | `route` | `string` | The subway route the rider is traveling on (e.g. `'L'`). |
+    | `fromStopId` | `string` | The stop the rider is departing from (e.g. `'L08'` for Bedford Av). |
+    | `destination` | `string` | A rider-facing destination to resolve (e.g. `'Union Sq'`). Matching tolerates casing and common station-name variations. |
+  </Step>
+  <Step title="Branch on the result">
+    The method always resolves to a `SubwayDirectionResolution` object — it never returns `null`. Check the `resolved` flag before reading the direction.
+
+    ```typescript
+    if (resolution.resolved) {
+      console.log(resolution.direction)        // "north"
+      console.log(resolution.displayDirection) // "toward 8 Av"
+      console.log(resolution.terminal)         // "8 Av"
+    } else {
+      console.warn(`Couldn't resolve a direction: ${resolution.reason}`)
+      // resolution.matches may list ambiguous candidate stops
+    }
+    ```
+
+    When `resolved` is `true`, the `direction`, `displayDirection`, `terminal`, and `destinationStop` fields are populated. When it's `false`, `reason` explains why, and `matches` may contain ambiguous candidate stops you can disambiguate in your UI.
+  </Step>
+  <Step title="Feed the direction into arrivals">
+    Pass the resolved `direction` straight into `mta.subway.arrivals()` to show only the trains heading the rider's way.
+
+    ```typescript
+    if (resolution.resolved) {
+      const arrivals = await mta.subway.arrivals({
+        stopId: 'L08',
+        route: 'L',
+        direction: resolution.direction,
+      })
+    
+      for (const arrival of arrivals) {
+        console.log(`${arrival.route.shortName} — ${arrival.displayDirection} — ${arrival.minutes} min`)
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Complete example
+
+This helper takes a rider's origin, route, and destination and returns the next trains heading the right way — or a helpful message when the destination can't be resolved.
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+async function arrivalsTowardDestination(
+  route: string,
+  fromStopId: string,
+  destination: string,
+) {
+  const resolution = await mta.subway.direction({ route, fromStopId, destination })
+
+  if (!resolution.resolved) {
+    return {
+      ok: false as const,
+      reason: resolution.reason ?? 'Could not resolve a direction.',
+      candidates: resolution.matches ?? [],
+    }
+  }
+
+  const arrivals = await mta.subway.arrivals({
+    stopId: fromStopId,
+    route,
+    direction: resolution.direction,
+  })
+
+  return {
+    ok: true as const,
+    heading: resolution.displayDirection, // e.g. "toward 8 Av"
+    terminal: resolution.terminal,        // e.g. "8 Av"
+    arrivals,
+  }
+}
+
+const result = await arrivalsTowardDestination('L', 'L08', 'Union Sq')
+
+if (result.ok) {
+  console.log(`Take the train ${result.heading}:`)
+  for (const a of result.arrivals) {
+    console.log(`  ${a.route.shortName} — ${a.minutes} min`)
+  }
+} else {
+  console.warn(result.reason)
+}
+```
+
+## Example resolution
+
+```json
+{
+  "route": { "id": "L", "shortName": "L", "color": "#A7A9AC" },
+  "destination": "Union Sq",
+  "normalizedDestination": "union sq",
+  "resolved": true,
+  "direction": "north",
+  "displayDirection": "toward 8 Av",
+  "terminal": "8 Av",
+  "fromStop": { "id": "L08", "name": "Bedford Av" },
+  "destinationStop": { "id": "L02", "name": "14 St-Union Sq" }
+}
+```
+
+## Handling ambiguous or unresolved destinations
+
+When a destination string matches more than one stop — or none — `resolved` is `false`. Use `reason` for a short explanation and `matches` to offer the rider a choice.
+
+```typescript
+const resolution = await mta.subway.direction({
+  route: 'L',
+  fromStopId: 'L08',
+  destination: '1 Av',
+})
+
+if (!resolution.resolved && resolution.matches?.length) {
+  console.log('Did you mean one of these stops?')
+  for (const stop of resolution.matches) {
+    console.log(`  ${stop.name} (${stop.id})`)
+  }
+}
+```
+
+<Tip>
+  `mta.subway.arrivals()` also accepts the rider-facing aliases `'uptown'` / `'downtown'` (and `'east'` / `'west'` on some lines), which it maps to the underlying feed direction for you. Use `mta.subway.direction()` when you only know _where the rider wants to go_, and the aliases when the rider already knows which way they're heading.
+</Tip>
+
+<Note>
+  Subway feed directions are always `north` / `south`, even on east–west lines like the L. `mta.subway.direction()` resolves to one of those two values so it can be passed directly to [`mta.subway.arrivals()`](/api-reference/subway). For the full parameter and type reference, see the [Direction API reference](/api-reference/direction).
+</Note>

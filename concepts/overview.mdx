@@ -1,0 +1,76 @@
+---
+title: "mta-js architecture: client model and namespaces"
+description: "Understand mta-js's unified client model, how it connects to MTA's GTFS-RT data feeds, and how the four namespaces are organized."
+sidebarTitle: "Overview"
+---
+
+mta-js wraps MTA's real-time GTFS feeds into a single, consistent interface. You create one `MTA` client, and from it you access four namespaces—`subway`, `bus`, `alerts`, and `stops`—each responsible for a distinct slice of NYC transit data. Under the hood, the SDK fetches live protocol buffer feeds from MTA's servers, decodes them, and returns typed JavaScript objects you can work with immediately.
+
+## The MTA client
+
+Everything starts with a single client instance. Pass an `apiKey` from [mtaapi.dev](https://www.mtaapi.dev) and the client handles authentication and request routing for you.
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+```
+
+You only need one instance per application. Create it once — at module load time or inside a shared singleton — and reuse it across all your requests.
+
+You can also call MTA feeds directly by passing `busTimeKey` instead of `apiKey`. See [Direct MTA feeds](/configuration/setup) for the full options.
+
+<Note>
+  Your API key is sent with every request. Keep it in an environment variable and never commit it to source control.
+</Note>
+
+## Namespaces
+
+The four namespaces cover the full scope of MTA's publicly available real-time data. Each namespace exposes focused methods that map directly to a category of MTA feed.
+
+<CardGroup cols={2}>
+  <Card title="subway" icon="train" href="/api-reference/subway">
+    Real-time arrival predictions for subway stops (`subway.arrivals()`), plus a destination-to-direction resolver ([`subway.direction()`](/api-reference/direction)) that turns a rider's destination into a north/south direction.
+  </Card>
+
+  <Card title="bus" icon="bus" href="/api-reference/bus">
+    Live vehicle positions for bus routes. Returns the current geographic location and status of every active bus on a given route.
+  </Card>
+
+  <Card title="alerts" icon="alert-triangle" href="/api-reference/alerts">
+    Active service alerts for subway and bus. Includes delays, planned work, elevator outages, and emergency notices.
+  </Card>
+
+  <Card title="stops" icon="map-pin" href="/api-reference/stops">
+    Stop discovery by geolocation. Given a latitude and longitude, returns nearby subway and bus stops sorted by distance.
+  </Card>
+</CardGroup>
+
+## Data freshness
+
+All four namespaces draw from MTA's GTFS Realtime (GTFS-RT) feeds—standardized protocol buffer streams that MTA publishes continuously. Subway arrival feeds typically refresh every 30 seconds. Bus position feeds update every 30 to 60 seconds. Alert feeds update as changes are published by MTA operations staff.
+
+When you call any method on the client, mta-js fetches the latest available snapshot of the relevant feed and returns it decoded. The SDK does not maintain a persistent connection or push updates to your application—you are responsible for polling at an appropriate interval for your use case.
+
+## Error handling
+
+mta-js throws typed errors when a request fails, a feed is unavailable, or you pass invalid parameters. Wrap your calls in a `try/catch` block to handle these cases gracefully.
+
+```typescript
+import { MTA, MtaError } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+try {
+  const arrivals = await mta.subway.arrivals({ stopId: 'A27', route: 'A' })
+  console.log(arrivals)
+} catch (error) {
+  if (error instanceof MtaError) {
+    console.error(`MTA error ${error.code}: ${error.message}`)
+  } else {
+    throw error
+  }
+}
+```
+
+Typed errors give you the error code and a human-readable message, making it straightforward to distinguish between a bad stop ID, a network failure, and a temporarily unavailable feed.

@@ -1,0 +1,305 @@
+---
+title: "Stop IDs, route IDs, and the MTA data model"
+description: "Learn how mta-js represents stops, routes, vehicles, and alerts—and how to find and use MTA stop IDs and route IDs in your SDK requests."
+sidebarTitle: "Data Model"
+---
+
+`mta-js `uses MTA's standard identifiers for stops and routes. These identifiers come directly from MTA's GTFS static dataset—the same dataset that powers Google Maps, Apple Maps, and most third-party transit apps. Understanding how stop IDs, route IDs, and transit modes work is essential for querying the right data and interpreting the responses you receive.
+
+## Stop IDs
+
+Every subway and bus stop in the MTA system has a unique stop ID defined in MTA's GTFS static feed. Stop IDs are alphanumeric strings that identify a specific physical platform or stop location.
+
+For subway stops, the ID typically combines a letter prefix and a numeric suffix. For example, `A27` identifies the Howard Beach–JFK Airport station on the A line. The same physical station can have multiple stop IDs if it serves multiple lines or has separate platforms for each direction.
+
+```typescript
+// Fetch arrivals at Howard Beach (A line, southbound platform)
+const arrivals = await mta.subway.arrivals({
+  stopId: 'A27',
+  route: 'A'
+})
+```
+
+<Tip>
+  `stopId` and `route` parameters across the SDK are typed as smart-string unions (e.g. `SubwayStopId`, `SubwayRoute`) — you get autocomplete for known IDs without being locked out of new or experimental values. See [Typed route and stop IDs](#typed-route-and-stop-ids) below.
+</Tip>
+
+<Tip>
+  You can look up stop IDs in MTA's official GTFS reference, available at [api.mta.info](https://api.mta.info). The `stops.txt` file in the GTFS static download contains every stop ID, name, and geographic coordinate in the system.
+</Tip>
+
+Bus stop IDs follow a similar convention and are found in the same GTFS static dataset, in the `stops.txt` file.
+
+## Route IDs
+
+Route IDs identify a specific subway line or bus route. mta-js uses these identifiers in method parameters to filter results to a single route.
+
+**Subway route IDs** match the line letter or number you see on signage and subway maps:
+
+| Route | Description |
+| --- | --- |
+| `A`, `C`, `E` | A/C/E lines (8th Avenue) |
+| `B`, `D`, `F`, `M` | B/D/F/M lines (6th Avenue) |
+| `1`, `2`, `3` | 1/2/3 lines (7th Avenue) |
+| `L` | L line (Canarsie) |
+| `G` | G line (Crosstown) |
+
+**Bus route IDs** use the MTA route designation, which includes a borough prefix and route number:
+
+| Route | Description |
+| --- | --- |
+| `B63` | B63 bus (Brooklyn, 5th Avenue) |
+| `M15` | M15 bus (Manhattan, 1st/2nd Avenue) |
+| `Q58` | Q58 bus (Queens) |
+| `Bx12` | Bx12 bus (Bronx, Pelham Pkwy) |
+
+`route` parameters across the SDK are typed as smart-string unions. Subway-specific methods narrow to `SubwayRoute`, bus-specific methods to `BusRoute`, and pan-mode methods (alerts, stops) accept `RouteId`. You get autocomplete for valid IDs without losing the freedom to pass any string. See [Typed route and stop IDs](#typed-route-and-stop-ids) below.
+
+```typescript
+// Subway: filter to a specific route — `route` is SubwayRoute
+const subwayArrivals = await mta.subway.arrivals({ stopId: '120', route: '1' })
+
+// Bus: get vehicle positions for a route — `route` is BusRoute
+const busPositions = await mta.bus.vehicles({ route: 'M15' })
+```
+
+## Transit modes and directions
+
+```typescript
+type TransitMode = 'subway' | 'bus' | 'lirr' | 'metro-north'
+type Direction = 'north' | 'south' | 'east' | 'west' | 'unknown'
+```
+
+Methods that scope to a specific system accept a `mode` (or `modes`) parameter. The two most commonly used values are:
+
+- `'subway'` — the NYC subway system
+- `'bus'` — the NYC bus network (local, express, and SBS routes)
+
+`'lirr'` and `'metro-north'` are also valid for service alerts. `mta.subway.arrivals` additionally accepts `'uptown'` and `'downtown'` as direction aliases — they're normalized into the underlying `Direction` value for you.
+
+```typescript
+// Fetch only subway service alerts
+const subwayAlerts = await mta.alerts.current({ mode: 'subway' })
+
+// Fetch stops near a location, searching both subway and bus
+const nearby = await mta.stops.near({
+  lat: 40.6501,
+  lon: -73.9496,
+  modes: ['subway', 'bus']
+})
+```
+
+## Timestamps
+
+Time values in `mta-js` responses are returned as **ISO 8601 strings** (e.g. `'2026-05-26T17:12:29.787Z'`), so you can pass them straight to `new Date()` without unit conversion.
+
+```typescript
+const { arrivals } = await mta.subway.arrivals({ stopId: 'A27', route: 'A' })
+
+for (const arrival of arrivals) {
+  const arrivalDate = new Date(arrival.arrivalTime)
+  console.log(`${arrival.route.id} arrives at ${arrivalDate.toLocaleTimeString()} (in ${arrival.minutes} min)`)
+}
+```
+
+Each `Arrival` also includes a precomputed `minutes` field for the common "minutes until arrival" use case, so you usually don't have to do the math yourself.
+
+## TypeScript interfaces
+
+`mta-js` ships with full TypeScript type definitions. Every response is a structured object — routes and stops are nested, not flat strings.
+
+```typescript
+interface Route {
+  id: string
+  shortName?: string
+  longName?: string
+  color?: string
+  textColor?: string
+  type?: number
+}
+
+interface Stop {
+  id: string
+  name: string
+  lat?: number
+  lon?: number
+  parentStation?: string
+  mode?: TransitMode
+}
+
+type NearbyStop = Stop & {
+  distanceMeters?: number
+  servedRoutes?: Route[]
+  routeMatch?: boolean
+  routeHeadsigns?: string[]
+  note?: string
+}
+
+interface Arrival {
+  mode: TransitMode
+  route: Route
+  stop: Stop
+  direction: Direction
+  headsign?: string
+  arrivalTime: string         // ISO 8601 timestamp
+  departureTime?: string      // ISO 8601 timestamp
+  minutes: number             // Minutes until arrival
+  tripId?: string
+  realtime: boolean
+  source: 'mta-gtfs-rt' | 'mta-bustime'
+  raw?: unknown               // Present when includeRaw: true
+}
+
+interface Vehicle {
+  mode: TransitMode
+  route: Route
+  vehicleId?: string
+  tripId?: string
+  stop?: Stop                 // Next or current stop
+  lat?: number
+  lon?: number
+  bearing?: number            // Degrees clockwise from north
+  destinationName?: string
+  recordedAt?: string         // ISO 8601 timestamp
+  source: 'mta-bustime'
+  raw?: unknown
+}
+
+interface Alert {
+  id: string
+  mode?: TransitMode
+  routes: Route[]
+  stops: Stop[]
+  header?: string
+  description?: string
+  url?: string
+  effect?: string
+  severity?: string
+  activePeriods: { start?: string; end?: string }[]
+  source: 'mta-gtfs-rt'
+  raw?: unknown
+}
+```
+
+Query parameter shapes:
+
+```typescript
+interface SubwayArrivalQuery {
+  stopId: SubwayStopId
+  route?: SubwayRoute
+  direction?: Direction | 'uptown' | 'downtown'
+  limit?: number
+  includeRaw?: boolean
+}
+
+interface BusArrivalQuery {
+  stopId: BusStopId
+  route?: BusRoute
+  limit?: number
+  includeRaw?: boolean
+}
+
+interface BusVehicleQuery {
+  route?: BusRoute
+  vehicleId?: string
+  limit?: number
+  includeRaw?: boolean
+}
+
+interface AlertQuery {
+  mode?: TransitMode
+  route?: RouteId
+  stopId?: StopId
+  includeRaw?: boolean
+}
+
+interface StopsNearQuery {
+  lat: number
+  lon: number
+  modes?: TransitMode[]
+  route?: RouteId
+  includeRoutes?: boolean
+  radiusMeters?: number
+  limit?: number
+}
+```
+
+All types are exported from `mta-js` for use in your own annotations:
+
+```typescript
+import type {
+  Arrival,
+  Alert,
+  Vehicle,
+  Stop,
+  NearbyStop,
+  Route,
+  TransitMode,
+  Direction,
+} from 'mta-js'
+```
+
+## Typed route and stop IDs
+
+`mta-js` exports literal union types generated from the live hosted stops snapshot, plus **"smart string" wrappers** that let you pass any string while still getting autocomplete for known values. Every `stopId` and `route` parameter on the SDK uses these wrappers, so your editor suggests valid IDs as you type — but you can still pass new or experimental IDs without fighting the type system.
+
+```typescript
+import type {
+  // Smart-string types used by SDK params (autocomplete + accept any string)
+  RouteId,
+  SubwayRoute,
+  BusRoute,
+  StopId,
+  SubwayStopId,
+  BusStopId,
+  // Underlying generated literal unions (strict)
+  KnownRoute,
+  KnownSubwayRoute,
+  KnownBusRoute,
+  KnownStopId,
+  KnownSubwayStopId,
+  KnownBusStopId,
+} from 'mta-js'
+```
+
+| Type | Definition | Use for |
+| --- | --- | --- |
+| `RouteId` | \`KnownRoute | Any route ID (subway \+ bus). |
+| `SubwayRoute` | \`KnownSubwayRoute | Subway-only route IDs. |
+| `BusRoute` | \`KnownBusRoute | Bus-only route IDs. |
+| `StopId` | \`KnownStopId | Any stop ID. |
+| `SubwayStopId` | \`KnownSubwayStopId | Subway-only stop IDs. |
+| `BusStopId` | \`KnownBusStopId | Bus-only stop IDs. |
+
+The `(string & {})` intersection is the TypeScript trick that preserves autocomplete for the known literals while still allowing any string at the type level.
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+// Autocomplete suggests 'L', 'L08', etc., but unknown strings are also accepted
+await mta.subway.arrivals({ stopId: 'L08', route: 'L' })
+await mta.bus.vehicles({ route: 'M23-SBS' })
+```
+
+If you want **stricter compile-time enforcement** that rejects any value not in the snapshot, annotate against the `Known*` unions directly:
+
+```typescript
+import type { KnownSubwayRoute, KnownSubwayStopId } from 'mta-js'
+
+async function getArrivals(stopId: KnownSubwayStopId, route: KnownSubwayRoute) {
+  return mta.subway.arrivals({ stopId, route })
+}
+
+await getArrivals('L08', 'L')   // ✓ valid
+// await getArrivals('L08', 'XX') // ✗ TS error: not assignable to KnownSubwayRoute
+```
+
+<Note>
+  These literal unions are **regenerated from the hosted snapshot** at `mtaapi.dev`, so they always match the routes and stops the API currently knows about. Update `mta-js` to pick up newly added routes or stops.
+</Note>
+
+<Tip>
+  Prefer the narrowest type that matches your call site — `KnownSubwayRoute` over `KnownRoute` when you're only working with subway, etc. The narrower the type, the more autocomplete and the fewer runtime surprises.
+</Tip>

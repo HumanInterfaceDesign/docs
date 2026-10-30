@@ -1,0 +1,82 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "MTA API (mta-js)",
+  "projectDescription": "A unified JavaScript/TypeScript SDK for accessing real-time MTA subway and bus data including arrivals, service alerts, vehicle positions, and nearby stops.",
+  "theme": "luma",
+  "primaryColor": "#deb55f",
+  "lightColor": "#1f8f48",
+  "darkColor": "#07070c",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/data-model",
+              "concepts/real-time-feeds"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/subway-arrivals",
+              "guides/bus-tracking",
+              "guides/service-alerts",
+              "guides/nearby-stops"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/setup",
+              "configuration/database"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "SDK Reference",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/subway",
+              "api-reference/bus",
+              "api-reference/alerts",
+              "api-reference/stops"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Real-time subway arrival times",
+    "Bus vehicle positions and tracking",
+    "Service alerts for delays and planned work",
+    "Nearby stops lookup by geolocation",
+    "TypeScript-first with full type definitions",
+    "Serverless-compatible with SQLite/Turso support",
+    "Automatic GTFS data hydration",
+    "Single consistent API across all MTA modes"
+  ],
+  "publicApiSurface": [
+    "new MTA(apiKey)",
+    "mta.subway.arrivals({ stopId, route })",
+    "mta.bus.vehicles({ route })",
+    "mta.alerts.current({ mode })",
+    "mta.stops.near({ lat, lon, modes })"
+  ]
+}

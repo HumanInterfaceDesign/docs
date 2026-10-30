@@ -1,0 +1,143 @@
+---
+title: "mta.alerts.current() — active MTA service alerts"
+description: "Reference for mta.alerts in mta-js. Retrieve current MTA service alerts—delays, planned work, and route suspensions—for subway or bus."
+sidebarTitle: "Alerts"
+openapi: "GET /api/v1/alerts"
+---
+
+The `mta.alerts` namespace surfaces active MTA service alerts pulled from the agency's GTFS-Realtime alerts feed. Use `mta.alerts.current` to retrieve delays, planned service changes, and route suspensions for either the subway or bus network, filtered to only what's happening right now.
+
+## `mta.alerts.current(params)`
+
+Returns all active service alerts for the specified transit mode. Alerts include human-readable header and description text, affected routes, a severity classification, and the time window during which the alert applies.
+
+### Parameters
+
+<ParamField body="mode" type="string" required>
+  The transit mode to fetch alerts for. Accepted values are `'subway'` or `'bus'`. Pass `'subway'` to get alerts affecting subway routes, or `'bus'` to get alerts affecting bus routes.
+</ParamField>
+
+### TypeScript signature
+
+```typescript
+type AlertMode = 'subway' | 'bus'
+
+interface AlertsCurrentParams {
+  mode: AlertMode
+}
+
+interface ServiceAlert {
+  id: string
+  headerText: string
+  descriptionText: string
+  affectedRoutes: string[]
+  severity: string
+  startTime: number        // Unix timestamp (seconds)
+  endTime: number | null   // null if the alert has no scheduled end
+}
+
+interface AlertsCurrentResponse {
+  alerts: ServiceAlert[]
+}
+
+mta.alerts.current(params: AlertsCurrentParams): Promise<AlertsCurrentResponse>
+```
+
+### Response fields
+
+<ResponseField name="alerts" type="object[]" required>
+  An array of active service alerts for the requested mode, ordered by `startTime` descending. Returns an empty array if there are no active alerts.
+
+  <Expandable title="alerts properties">
+    <ResponseField name="id" type="string" required>
+      The unique identifier for this alert, assigned by the MTA.
+    </ResponseField>
+
+    <ResponseField name="headerText" type="string" required>
+      A short summary of the alert, suitable for display in a list or notification.
+    </ResponseField>
+
+    <ResponseField name="descriptionText" type="string" required>
+      The full alert body with details about affected service and any alternative instructions.
+    </ResponseField>
+
+    <ResponseField name="affectedRoutes" type="string[]" required>
+      An array of route IDs impacted by this alert (for example, `['A', 'C', 'E']`).
+    </ResponseField>
+
+    <ResponseField name="severity" type="string" required>
+      The severity level of the alert. See the severity table below for possible values and their meanings.
+    </ResponseField>
+
+    <ResponseField name="startTime" type="number" required>
+      The Unix timestamp (in seconds) when the alert becomes or became active.
+    </ResponseField>
+
+    <ResponseField name="endTime" type="number | null" required>
+      The Unix timestamp (in seconds) when the alert is scheduled to end, or `null` if no end time has been set.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Severity values
+
+The `severity` field uses the following string values, from least to most severe:
+
+| Value | Meaning |
+| --- | --- |
+| `'INFO'` | General informational notice with no service impact. |
+| `'WARNING'` | Minor disruption; service is affected but operating. |
+| `'SEVERE'` | Significant disruption such as major delays or reroutes. |
+| `'NO_SERVICE'` | The affected route or portion of it is suspended. |
+
+<Note>
+  `'NO_SERVICE'` alerts often accompany planned weekend work or emergency shutdowns. Filter on this severity value to surface outages that require riders to seek alternative routes.
+</Note>
+
+### Code example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+const response = await mta.alerts.current({ mode: 'subway' })
+
+const severe = response.alerts.filter(
+  (alert) => alert.severity === 'SEVERE' || alert.severity === 'NO_SERVICE'
+)
+
+for (const alert of severe) {
+  console.log(`[${alert.severity}] ${alert.headerText}`)
+  console.log(`Affected routes: ${alert.affectedRoutes.join(', ')}`)
+  console.log(alert.descriptionText)
+  console.log('---')
+}
+```
+
+### Example response
+
+```json
+{
+  "alerts": [
+    {
+      "id": "lmm:planned_work:127307",
+      "headerText": "A trains skip Howard Beach–JFK Airport",
+      "descriptionText": "Due to track maintenance, A trains will not stop at Howard Beach–JFK Airport (A27) from 11:30 PM Friday to 5 AM Monday. Take the AirTrain from Jamaica station as an alternative.",
+      "affectedRoutes": ["A"],
+      "severity": "WARNING",
+      "startTime": 1748991000,
+      "endTime": 1749214800
+    },
+    {
+      "id": "lmm:service_change:130841",
+      "headerText": "No F trains between 47–50 Sts–Rockefeller Ctr and Jay St–MetroTech",
+      "descriptionText": "F trains are suspended between 47–50 Sts–Rockefeller Ctr and Jay St–MetroTech due to an emergency signal repair. Use the A, C, or E trains as alternatives.",
+      "affectedRoutes": ["F"],
+      "severity": "NO_SERVICE",
+      "startTime": 1748994600,
+      "endTime": null
+    }
+  ]
+}
+```

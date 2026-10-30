@@ -1,0 +1,201 @@
+---
+title: "Fetch MTA service alerts and disruptions"
+description: "Fetch current MTA service alerts for subway and bus using mta-js. Filter by route and severity to surface delays and service changes in your app."
+sidebarTitle: "Service Alerts"
+---
+
+This guide shows you how to fetch current MTA service alerts covering delays, planned work, and service changes for subway and bus. You will call `mta.alerts.current()`, filter the results for the routes you care about, and display the relevant messages in your application.
+
+<Steps>
+  <Step title="Call mta.alerts.current()">
+    Pass a `mode` of `'subway'` or `'bus'` to retrieve alerts for that transit type. You can call both and merge the results if your application covers multiple modes.
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    
+    // Fetch subway alerts
+    const subwayAlerts = await mta.alerts.current({ mode: 'subway' })
+    
+    // Fetch bus alerts
+    const busAlerts = await mta.alerts.current({ mode: 'bus' })
+    ```
+
+    **Example response:**
+
+    ```json
+    {
+      "alerts": [
+        {
+          "id": "lmm:alert:123456",
+          "headerText": "A/C trains running with delays",
+          "descriptionText": "A and C trains are delayed due to signal problems at Jay St-MetroTech. Allow additional travel time.",
+          "affectedRoutes": ["A", "C"],
+          "severity": "WARNING",
+          "startTime": 1715770800,
+          "endTime": 1715785200
+        },
+        {
+          "id": "lmm:alert:789012",
+          "headerText": "Planned work this weekend",
+          "descriptionText": "No N trains between Astoria and Times Square Sat 12am–5am and Sun 12am–5am.",
+          "affectedRoutes": ["N"],
+          "severity": "INFO",
+          "startTime": 1715904000,
+          "endTime": 1716076800
+        }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Filter alerts by route or severity">
+    The `alerts` array may contain many entries. Filter it down to only the routes your users care about before displaying anything.
+
+    ```typescript
+    function getAlertsForRoute(
+      alerts: typeof subwayAlerts.alerts,
+      route: string
+    ) {
+      return alerts.filter((alert) =>
+        alert.affectedRoutes.includes(route)
+      )
+    }
+    
+    const aTrainAlerts = getAlertsForRoute(subwayAlerts.alerts, 'A')
+    ```
+
+    You can also filter by severity to surface only the most urgent alerts:
+
+    ```typescript
+    const urgentAlerts = subwayAlerts.alerts.filter(
+      (alert) => alert.severity === 'WARNING' || alert.severity === 'SEVERE'
+    )
+    ```
+  </Step>
+  <Step title="Display alert messages to users">
+    Use `headerText` as the alert title and `descriptionText` for the full detail. Always show both — `headerText` alone may not give users enough context to act on the disruption.
+
+    ```typescript
+    for (const alert of aTrainAlerts) {
+      console.log(`[${alert.severity}] ${alert.headerText}`)
+      console.log(alert.descriptionText)
+      console.log(`Affects: ${alert.affectedRoutes.join(', ')}`)
+      console.log('---')
+    }
+    ```
+  </Step>
+  <Step title="Poll for updates">
+    Alerts can be issued or resolved at any time. Poll `mta.alerts.current()` on a regular interval to keep your UI up to date.
+
+    ```typescript
+    async function refreshAlerts(mode: 'subway' | 'bus') {
+      const data = await mta.alerts.current({ mode })
+      renderAlerts(data.alerts)
+    }
+    
+    // Check for new alerts every 60 seconds
+    setInterval(() => refreshAlerts('subway'), 60_000)
+    ```
+
+    Sixty seconds is a reasonable interval for alerts. Unlike arrival times, service alerts change less frequently, so you don't need to poll as aggressively.
+  </Step>
+</Steps>
+
+## Complete example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+interface Alert {
+  id: string
+  headerText: string
+  descriptionText: string
+  affectedRoutes: string[]
+  severity: string
+  startTime: number
+  endTime: number | null
+}
+
+function filterActiveAlerts(alerts: Alert[]): Alert[] {
+  const now = Math.floor(Date.now() / 1000)
+  return alerts.filter((alert) => {
+    const started = alert.startTime <= now
+    const notEnded = alert.endTime === null || alert.endTime > now
+    return started && notEnded
+  })
+}
+
+function filterByRoute(alerts: Alert[], route: string): Alert[] {
+  return alerts.filter((alert) => alert.affectedRoutes.includes(route))
+}
+
+async function displayAlertsForRoute(
+  route: string,
+  mode: 'subway' | 'bus'
+): Promise<void> {
+  try {
+    const data = await mta.alerts.current({ mode })
+
+    const active = filterActiveAlerts(data.alerts)
+    const relevant = filterByRoute(active, route)
+
+    if (relevant.length === 0) {
+      console.log(`No active alerts for route ${route}.`)
+      return
+    }
+
+    console.log(`${relevant.length} alert(s) affecting route ${route}:\n`)
+
+    for (const alert of relevant) {
+      console.log(`[${alert.severity}] ${alert.headerText}`)
+      console.log(alert.descriptionText)
+      console.log()
+    }
+  } catch (error) {
+    console.error('Failed to fetch alerts:', error)
+  }
+}
+
+await displayAlertsForRoute('A', 'subway')
+```
+
+## Filtering by route
+
+When you need alerts for multiple routes at once, extend the filter to check any route in a set:
+
+```typescript
+const routes = new Set(['A', 'C', 'E'])
+
+const filteredAlerts = subwayAlerts.alerts.filter((alert) =>
+  alert.affectedRoutes.some((r) => routes.has(r))
+)
+```
+
+This is useful for transit apps that let users follow several lines and want a unified alert feed across all of them.
+
+<Tip>
+  Filter to active alerts before displaying anything. An alert with a `startTime` in the future is scheduled but not yet in effect, and an alert with a past `endTime` is resolved. Check both fields before rendering.
+
+  ```typescript
+  const now = Math.floor(Date.now() / 1000)
+  
+  const activeAlerts = alerts.filter(
+    (alert) =>
+      alert.startTime <= now &&
+      (alert.endTime === null || alert.endTime > now)
+  )
+  ```
+</Tip>
+
+<Note>
+  Alert severity levels indicate how disruptive an event is:
+
+  - **`INFO`** — general notices, such as weekend service changes or planned work during off-peak hours
+  - **`WARNING`** — moderate disruptions, such as delays or reduced service frequency
+  - **`SEVERE`** — significant disruptions, such as suspended service or major reroutes
+
+  Use severity to prioritize which alerts you surface prominently in your UI. Consider showing `SEVERE` alerts in a banner or push notification, and `INFO` alerts inline with scheduled service information.
+</Note>

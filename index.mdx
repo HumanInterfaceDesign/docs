@@ -1,0 +1,156 @@
+---
+title: "Get started with mta-js"
+description: "mta-js is a TypeScript SDK for NYC transit data. Install it, get your MTA API key, and make your first real-time subway arrival request in minutes."
+sidebarTitle: "Quick Start"
+---
+
+`mta-js` is a unified JavaScript/TypeScript SDK that wraps MTA's real-time feeds into one consistent, easy-to-use interface. Whether you're building a transit tracker, a commute planner, or a live arrival board, mta-js gives you subway arrivals, bus vehicle positions, service alerts, and geolocation-based stop lookups—all through a single `MTA` client.
+
+## Get up and running
+
+<Steps>
+  <Step title="Install the package">
+    Add `mta-js` to your project using your preferred package manager.
+
+    <CodeGroup>
+
+    ```bash npm
+    npm install mta-js
+    ```
+
+    ```bash yarn
+    yarn add mta-js
+    ```
+
+    ```bash pnpm
+    pnpm add mta-js
+    ```
+
+    ```bash bun
+    bun add mta-js
+    ```
+
+    </CodeGroup>
+
+    <Note>
+      Using Next.js with Turbopack? Add `mta-js` to `transpilePackages`. The SDK publishes TypeScript source, and this tells Next to compile it instead of treating `node_modules/mta-js/index.ts` as an unknown module type.
+
+      ```javascript next.config.mjs
+      /** @type {import("next").NextConfig} */
+      const nextConfig = {
+        transpilePackages: ["mta-js"],
+      }
+      
+      export default nextConfig
+      ```
+    </Note>
+  </Step>
+  <Step title="Get your API key from mtaapi.dev">
+    Get an API key from [mtaapi.dev](https://www.mtaapi.dev) — our hosted MTA API. One key, all endpoints, no setup.
+
+    1. Sign up at [mtaapi.dev](https://www.mtaapi.dev).
+    2. Copy your API key from the dashboard.
+    3. Add it to your project as an environment variable:
+
+    ```bash .env
+    MTA_API_KEY=your_api_key_here
+    ```
+
+    <Note>
+      Never commit your API key to version control. Store it in an environment variable and load it at runtime. See [Authentication](/authentication) for more detail.
+    </Note>
+  </Step>
+  <Step title="Initialize the client">
+    Import `MTA` and create a client instance by passing your `apiKey`.
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    ```
+
+    With an `apiKey` set, requests are routed to `https://www.mtaapi.dev/api/v1` automatically. You only configure it once.
+  </Step>
+  <Step title="Fetch real-time data">
+    Call `mta.subway.arrivals()` with a stop ID and route to get real-time arrival predictions.
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    
+    // Next A trains at Howard Beach
+    const arrivals = await mta.subway.arrivals({
+      stopId: 'A27',
+      route: 'A'
+    })
+    
+    console.log(arrivals)
+    ```
+
+    A successful response is an array of `Arrival` objects:
+
+    ```json
+    [
+      {
+        "mode": "subway",
+        "route": { "id": "A", "shortName": "A", "color": "#0039A6" },
+        "stop": { "id": "A27", "name": "Howard Beach-JFK Airport", "displayName": "Howard Beach–JFK Airport" },
+        "direction": "north",
+        "destination": "Inwood-207 St",
+        "displayDirection": "toward Inwood-207 St",
+        "arrivalTime": "2026-05-29T18:32:00.000Z",
+        "minutes": 4,
+        "tripId": "AFA25GEN-1037-Sunday-00_106200_A..N70R",
+        "realtime": true,
+        "source": "mta-gtfs-rt"
+      },
+      {
+        "mode": "subway",
+        "route": { "id": "A", "shortName": "A", "color": "#0039A6" },
+        "stop": { "id": "A27", "name": "Howard Beach-JFK Airport", "displayName": "Howard Beach–JFK Airport" },
+        "direction": "north",
+        "destination": "Inwood-207 St",
+        "displayDirection": "toward Inwood-207 St",
+        "arrivalTime": "2026-05-29T18:47:00.000Z",
+        "minutes": 19,
+        "tripId": "AFA25GEN-1037-Sunday-00_109800_A..N70R",
+        "realtime": true,
+        "source": "mta-gtfs-rt"
+      }
+    ]
+    ```
+  </Step>
+</Steps>
+
+## What you can build
+
+<CardGroup cols={2}>
+  <Card title="Subway arrivals" icon="train" href="/guides/subway-arrivals">
+    Real-time arrival times for any subway stop and route.
+  </Card>
+
+  <Card title="Bus tracking" icon="bus" href="/guides/bus-tracking">
+    Live vehicle positions for any bus route.
+  </Card>
+
+  <Card title="Service alerts" icon="alert-triangle" href="/guides/service-alerts">
+    Delays, planned work, and service changes in real time.
+  </Card>
+
+  <Card title="Nearby stops" icon="map-pin" href="/guides/nearby-stops">
+    Find subway and bus stops near any latitude/longitude.
+  </Card>
+
+  <Card title="Trip direction" icon="compass" href="/api-reference/direction">
+    Resolve a rider's destination into the right north/south direction.
+  </Card>
+
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Full SDK method reference with parameters and response types.
+  </Card>
+</CardGroup>
+
+<Note>
+  Prefer to call MTA feeds directly instead of using the hosted API? See [Direct MTA feeds and self-hosting](/configuration/setup).
+</Note>

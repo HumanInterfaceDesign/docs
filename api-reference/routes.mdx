@@ -1,0 +1,22 @@
+---
+title: "mta.routes.list() — list subway and bus routes"
+description: "Reference for GET /api/v1/routes. List the catalog of subway and bus routes, with names, colors, and transit mode."
+sidebarTitle: "Routes"
+openapi: "GET /api/v1/routes"
+---
+
+Returns the catalog of routes in the hosted stops snapshot. Pass a comma-separated `modes` filter (for example `subway,bus`) to scope the list, or omit it for every mode.
+
+Each entry is a `Route` plus a `mode`: `{ id, shortName?, longName?, color?, textColor?, type?, mode }`. Use it to populate a route picker or hydrate route metadata client-side.
+
+### SDK
+
+```typescript
+const routes = await mta.routes.list({ modes: ['subway', 'bus'] })
+
+for (const route of routes) {
+  console.log(route.shortName ?? route.id, route.mode)
+}
+```
+
+See the [Routes & Stations guide](/guides/routes-and-stations).

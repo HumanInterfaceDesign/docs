@@ -1,0 +1,181 @@
+---
+title: "Choose a database backend: SQLite or Turso"
+description: "Configure mta-js to use SQLite for local servers or Turso for serverless deployments to store and sync GTFS static transit data."
+sidebarTitle: "Database"
+---
+
+<Note>
+  This page only applies if you're **self-hosting** mta-js. If you're using the hosted API at [mtaapi.dev](https://www.mtaapi.dev), the database is managed for you — no setup needed. **Most users should start there**; it's faster, easier, and stays in sync automatically.
+</Note>
+
+When self-hosting, mta-js stores GTFS static data — stop names, route definitions, headsigns, and trip metadata — in a local or remote database. This data backs every SDK call that needs to resolve a stop ID to a name, look up a route, or filter arrivals to a specific direction. You can choose between SQLite for traditional servers and Turso (libSQL) for serverless and edge deployments.
+
+<Note>
+  GTFS static data (stop names, route metadata) is different from real-time data (live arrivals, bus positions, service alerts). The database described here only stores static reference data. Realtime feeds are always fetched directly from the MTA and never persisted.
+</Note>
+
+## SQLite (local)
+
+SQLite is the simplest backend and the right choice for local development or any traditional server with a persistent file system. Point `databaseUrl` at a file path or use `:memory:` for tests.
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({
+  busTimeKey: process.env.MTA_BUS_KEY,
+  databaseUrl: 'file:.mta-cache/gtfs.sqlite',
+})
+
+// Or absolute / in-memory
+new MTA({ databaseUrl: ':memory:' })
+new MTA({ databaseUrl: '/var/data/mta-gtfs.sqlite' })
+```
+
+<Warning>
+  Do not use a local SQLite file in serverless environments with ephemeral storage (Vercel, AWS Lambda, Cloudflare Workers). The file is lost between invocations, forcing a full GTFS re-import on every cold start. Use a remote snapshot URL or Turso instead.
+</Warning>
+
+## Remote SQLite snapshots
+
+For serverless deploys, `databaseUrl` can point at a remote SQLite snapshot over HTTPS. The client downloads it into local temp storage on first call and reuses it while the instance stays warm. Async API calls wait for hydration automatically.
+
+```typescript
+const mta = new MTA({
+  databaseUrl: 'https://cdn.example.com/mta-gtfs.sqlite',
+})
+
+await mta.subway.arrivals({ stopId: 'A27', route: 'A' })
+```
+
+Pin the local path when your platform gives you a writable temp directory:
+
+```typescript
+const mta = new MTA({
+  databaseUrl: 'https://cdn.example.com/mta-gtfs.sqlite',
+  databaseLocalPath: '/tmp/mta-gtfs.sqlite',
+})
+```
+
+To pay the hydration cost up front during startup instead of on the first request, `await mta.ready()`:
+
+```typescript
+const mta = new MTA({ databaseUrl: 'https://cdn.example.com/mta-gtfs.sqlite' })
+await mta.ready()
+```
+
+Remote SQLite hydration is a read-through snapshot. Local writes (like importing fresh GTFS during a serverless request) update the hydrated copy only; they are **not** written back to the remote URL.
+
+## Turso / libSQL (serverless)
+
+[Turso](https://turso.tech) (libSQL) is supported as an embedded replica: the remote database syncs into a local SQLite file first, then mta-js reads that local replica. This is the recommended setup for Vercel, Cloudflare Workers, and AWS Lambda when you want persistent writes.
+
+<Steps>
+  <Step title="Create a Turso database">
+    ```bash
+    brew install tursodatabase/tap/turso
+    turso auth login
+    turso db create mta-gtfs
+    ```
+  </Step>
+  <Step title="Get credentials">
+    ```bash
+    turso db show mta-gtfs --url
+    turso db tokens create mta-gtfs
+    ```
+  </Step>
+  <Step title="Pass them to the MTA constructor">
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({
+      busTimeKey: process.env.MTA_BUS_KEY,
+      databaseUrl: process.env.TURSO_DATABASE_URL,
+      databaseAuthToken: process.env.TURSO_AUTH_TOKEN,
+      databaseLocalPath: '/tmp/mta-gtfs.sqlite',
+    })
+    
+    await mta.ready()
+    ```
+  </Step>
+</Steps>
+
+Most Turso databases require an auth token. Omit `databaseAuthToken` only for databases configured to allow anonymous reads.
+
+<Tip>
+  If libSQL reports `invalid peer certificate: UnknownIssuer`, disable HTTPS interception for Turso/libSQL in your debugging proxy. The native libSQL sync client may not trust a proxy certificate that `fetch` accepts.
+</Tip>
+
+## Importing GTFS static data
+
+mta-js ships with a Drizzle-like schema push and a CLI for importing the MTA's official GTFS feed. `push` is idempotent — it applies `create table if not exists` and `create index if not exists` statements without generating migration files.
+
+```typescript
+await mta.database.push()
+```
+
+Import official subway GTFS from the CLI. `core` is the default production strategy (stops/routes only); `schedule` also imports trips and stop times:
+
+```bash
+bun src/cli.ts db import --mode=subway --strategy=core
+bun src/cli.ts db import --mode=subway --strategy=schedule
+```
+
+Against Turso:
+
+```bash
+MTA_DATABASE_URL=libsql://your-db.turso.io \
+MTA_DATABASE_AUTH_TOKEN=... \
+bun src/cli.ts db import --mode=subway --strategy=core
+```
+
+You can also import a ZIP directly at runtime:
+
+```typescript
+await mta.static.importZipFromUrl(
+  'https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip',
+  'subway',
+)
+```
+
+Tests and small scripts can seed the cache directly:
+
+```typescript
+mta.static.importSeed(
+  {
+    stops: [{ stop_id: 'A27', stop_name: 'Jay St-MetroTech' }],
+    routes: [{ route_id: 'A', route_short_name: 'A', route_type: 1 }],
+  },
+  'subway',
+)
+```
+
+## Self-healing static data on startup
+
+Make startup populate static GTFS for a mode if the import marker is missing. This writes the seed to the configured database and rehydrates the local replica. The default strategy is `core`.
+
+```typescript
+await mta.database.ensureStaticData({
+  mode: 'subway',
+  strategy: 'core',
+  seed: {
+    stops: [
+      { stop_id: 'L06', stop_name: '1 Av', stop_lat: 40.730953, stop_lon: -73.981628 },
+    ],
+    routes: [
+      { route_id: 'L', route_short_name: 'L', route_long_name: '14 St-Canarsie Local', route_type: 1 },
+    ],
+  },
+})
+```
+
+## Inspecting database status
+
+Check whether each transit mode has static GTFS loaded before serving traffic:
+
+```typescript
+await mta.database.status()
+```
+
+<Tip>
+  Importing the full subway GTFS feed takes meaningful time and bandwidth. If you can avoid running the import on every deploy, point `databaseUrl` at a long-lived Turso database or a CDN-hosted snapshot and only re-import when the MTA publishes new schedules.
+</Tip>

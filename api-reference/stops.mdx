@@ -1,0 +1,264 @@
+---
+title: "mta.stops.near() — find stops by geolocation"
+description: "Reference for mta.stops methods in mta-js. Find nearby MTA subway and bus stops sorted by distance from any latitude and longitude."
+sidebarTitle: "Stops"
+openapi: "GET /api/v1/stops/near"
+---
+
+The `mta.stops` namespace lets you discover MTA stops near any point on the map. Use `mta.stops.near` to find subway stations, bus stops, or both, sorted by distance from a given latitude and longitude. You can also pass a `route` to return only stops served by that route — for example, only `L` train stops or only `M23` SBS bus stops within walking distance. This is the recommended starting point when you need stop IDs for use with `mta.subway.arrivals` or `mta.bus.arrivals`, or to power a "stops near me" feature in your application.
+
+## `mta.stops.near(params)`
+
+Returns a list of MTA stops within a configurable radius of the provided coordinates, sorted by distance ascending. You can limit results to subway stops, bus stops, or both by passing the `modes` parameter, and further filter to stops served by a specific `route`.
+
+### Parameters
+
+<ParamField body="lat" type="number" required>
+  The latitude of the center point for the search, in decimal degrees (WGS 84). For example, `40.7128` for lower Manhattan.
+</ParamField>
+
+<ParamField body="lon" type="number" required>
+  The longitude of the center point for the search, in decimal degrees (WGS 84). For example, `-74.0060` for lower Manhattan.
+</ParamField>
+
+<ParamField body="modes" type="string[]">
+  An array of transit modes to include in the results. Accepted values are `'subway'` and `'bus'`. Pass `['subway']` to return only subway stations, `['bus']` to return only bus stops, or `['subway', 'bus']` to return both. Defaults to both modes if omitted.
+</ParamField>
+
+<ParamField body="route" type="string">
+  Optional route filter. When supplied, only stops served by this route are returned. For example, `'L'` returns nearby stops served by the L train, and `'M23'` returns nearby M23 SBS bus stops. Route IDs are case-sensitive and match MTA's published identifiers.
+</ParamField>
+
+<ParamField body="includeRoutes" type="boolean">
+  When `true`, each returned stop includes route metadata: a `servedRoutes` array of `ServedRoute` objects and a `directionHeadsigns` map. Defaults to `false` to keep responses small when you only need stop identity and distance.
+</ParamField>
+
+<ParamField body="radiusMeters" type="number">
+  Search radius in meters. Defaults to `500`. Increase this when querying sparse areas or to widen a "stops near me" view.
+</ParamField>
+
+<ParamField body="limit" type="number">
+  Maximum number of stops to return. Must be between `1` and `100`. Results remain sorted by distance ascending.
+</ParamField>
+
+### TypeScript signature
+
+```typescript
+type TransitMode = 'subway' | 'bus' | 'lirr' | 'metro-north'
+
+interface StopsNearParams {
+  lat: number
+  lon: number
+  modes?: TransitMode[]
+  route?: string
+  includeRoutes?: boolean
+  radiusMeters?: number
+  limit?: number
+}
+
+interface Stop {
+  id: string
+  name: string
+  displayName?: string     // human-friendly label (may differ from GTFS name)
+  lat?: number
+  lon?: number
+  parentStation?: string   // GTFS parent_station ID
+  parentId?: string        // resolved parent station ID
+  mode?: TransitMode
+}
+
+interface Route {
+  id: string
+  shortName?: string
+  longName?: string
+  color?: string
+  textColor?: string
+  type?: number
+}
+
+// Headsigns keyed by direction, e.g. { "north": ["8 Av"], "south": ["Canarsie"] }
+type DirectionHeadsigns = Record<string, string[]>
+
+// A route serving a stop — a Route plus headsign/direction metadata
+type ServedRoute = Route & {
+  headsigns?: string[]
+  directionHeadsigns?: DirectionHeadsigns
+  directions?: number[]
+}
+
+type NearbyStop = Stop & {
+  distanceMeters?: number
+  servedRoutes?: ServedRoute[]          // requires includeRoutes: true
+  routeMatch?: boolean                  // true when the stop matches the `route` filter
+  routeHeadsigns?: string[]             // headsigns for the filtered route
+  directionHeadsigns?: DirectionHeadsigns
+  note?: string
+}
+
+mta.stops.near(params: StopsNearParams): Promise<NearbyStop[]>
+```
+
+### Response fields
+
+<ResponseField name="stops" type="NearbyStop[]" required>
+  An array of nearby stops, sorted by `distanceMeters` ascending. Returns an empty array if no stops are found within the search radius.
+
+  <Expandable title="NearbyStop properties">
+    <ResponseField name="id" type="string" required>
+      The MTA stop ID. Use this as the `stopId` parameter in `mta.subway.arrivals`.
+    </ResponseField>
+
+    <ResponseField name="name" type="string" required>
+      The GTFS stop name (e.g. `'Jay St-MetroTech'`).
+    </ResponseField>
+
+    <ResponseField name="displayName" type="string">
+      A human-friendly display label that may differ slightly from the raw GTFS name (e.g. `'Jay St–MetroTech'`).
+    </ResponseField>
+
+    <ResponseField name="parentStation" type="string">
+      The GTFS `parent_station` ID, when the stop is a child platform of a larger station.
+    </ResponseField>
+
+    <ResponseField name="parentId" type="string">
+      The resolved parent station ID. Use this to group platform-level stops under the same station.
+    </ResponseField>
+
+    <ResponseField name="lat" type="number" required>
+      The latitude of the stop in decimal degrees (WGS 84).
+    </ResponseField>
+
+    <ResponseField name="lon" type="number" required>
+      The longitude of the stop in decimal degrees (WGS 84).
+    </ResponseField>
+
+    <ResponseField name="mode" type="string" required>
+      The transit mode: `'subway'` or `'bus'`.
+    </ResponseField>
+
+    <ResponseField name="distanceMeters" type="number">
+      Straight-line distance from the queried coordinates to this stop, in meters. Always present on results from `mta.stops.near`.
+    </ResponseField>
+
+    <ResponseField name="servedRoutes" type="ServedRoute[]">
+      Routes serving this stop. Each is a `Route` (`id`, `shortName`, `longName`, `color`, `textColor`, `type`) extended with optional `headsigns`, `directionHeadsigns`, and `directions`. Only included when `includeRoutes: true` is passed.
+    </ResponseField>
+
+    <ResponseField name="routeMatch" type="boolean">
+      When a `route` filter was supplied, indicates whether this stop is served by that route.
+    </ResponseField>
+
+    <ResponseField name="routeHeadsigns" type="string[]">
+      Headsigns for the filtered `route` at this stop, when a `route` filter was supplied.
+    </ResponseField>
+
+    <ResponseField name="directionHeadsigns" type="DirectionHeadsigns">
+      A `Record<string, string[]>` mapping each direction to its headsigns (e.g. `{ "north": ["8 Av"], "south": ["Canarsie"] }`). Useful for building direction-picker UIs. Only included when `includeRoutes: true` is passed.
+    </ResponseField>
+
+    <ResponseField name="note" type="string">
+      An optional advisory note about the stop.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Code example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+// Find subway stops near Prospect Park in Brooklyn
+const stops = await mta.stops.near({
+  lat: 40.6602,
+  lon: -73.9690,
+  modes: ['subway'],
+  includeRoutes: true,
+})
+
+for (const stop of stops) {
+  const distance = Math.round(stop.distanceMeters)
+  const routes = stop.servedRoutes?.map((r) => r.shortName).join(', ') ?? ''
+  console.log(`${stop.displayName ?? stop.name} (${stop.id}) — ${distance}m away — routes: ${routes}`)
+}
+```
+
+### Example response
+
+```json
+[
+  {
+    "id": "F21",
+    "name": "Prospect Park",
+    "displayName": "Prospect Park",
+    "lat": 40.6612,
+    "lon": -73.9622,
+    "mode": "subway",
+    "distanceMeters": 612,
+    "servedRoutes": [
+      {
+        "id": "F",
+        "shortName": "F",
+        "color": "#FF6319",
+        "directionHeadsigns": {
+          "north": ["Jamaica-179 St"],
+          "south": ["Coney Island-Stillwell Av"]
+        }
+      },
+      {
+        "id": "G",
+        "shortName": "G",
+        "color": "#6CBE45",
+        "directionHeadsigns": {
+          "north": ["Court Sq"],
+          "south": ["Church Av"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "D24",
+    "name": "Parkside Av",
+    "displayName": "Parkside Av",
+    "lat": 40.6554,
+    "lon": -73.9614,
+    "mode": "subway",
+    "distanceMeters": 870,
+    "servedRoutes": [
+      { "id": "B", "shortName": "B", "color": "#FF6319" },
+      { "id": "Q", "shortName": "Q", "color": "#FCCC0A" }
+    ]
+  }
+]
+```
+
+### Route-aware example
+
+Filter to nearby stops served by a specific route. This is useful when you want to find the closest stop on the M23 SBS or the nearest L train station without sorting through every nearby stop yourself.
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+// Find nearby M23 SBS bus stops within 800m, with route metadata
+const stops = await mta.stops.near({
+  lat: 40.7356,
+  lon: -73.9804,
+  modes: ['bus'],
+  route: 'M23',
+  includeRoutes: true,
+  radiusMeters: 800,
+  limit: 5,
+})
+
+for (const stop of stops) {
+  const routes = stop.servedRoutes?.map((r) => r.shortName).join(', ') ?? ''
+  console.log(`${stop.displayName ?? stop.name} — ${Math.round(stop.distanceMeters)}m — ${routes}`)
+}
+```
+
+<Tip>
+  Pass the `id` from a result directly into `mta.subway.arrivals` or `mta.bus.arrivals` to build a two-step "find stops near me, then show arrivals" flow without any additional configuration.
+</Tip>

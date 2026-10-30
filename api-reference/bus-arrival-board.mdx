@@ -1,0 +1,24 @@
+---
+title: "mta.bus.arrivalBoard() — nearby bus departure board"
+description: "Reference for GET /api/v1/bus/arrival-board. Find nearby bus stops and group their upcoming arrivals by route in a single request."
+sidebarTitle: "Bus Arrival Board"
+openapi: "GET /api/v1/bus/arrival-board"
+---
+
+Returns the nearest bus stops to a `lat` / `lon`, with each stop's upcoming arrivals grouped by route — the bus counterpart to the [subway arrival board](/api-reference/subway-arrival-board).
+
+Control the board with `limitStops` (max 20, default 8) and `limitArrivals` per route (max 10, default 3). Pass an optional `route` to restrict every stop to a single line. Each entry is `{ stop, distanceMeters, routes: [{ route, headsign?, arrivals[] }] }`.
+
+### SDK
+
+```typescript
+const board = await mta.bus.arrivalBoard({
+  lat: 40.7421,
+  lon: -73.9914,
+  route: 'M23',
+  limitStops: 1,
+  limitArrivals: 1,
+})
+```
+
+See the [Arrival Boards guide](/guides/arrival-boards).

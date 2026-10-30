@@ -1,0 +1,160 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "MTA API",
+  "colors": {
+    "primary": "#004CB7",
+    "light": "#FFFFFF",
+    "dark": "#1E3A8A"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "index",
+              "authentication",
+              "ai/overview"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/data-model",
+              "concepts/real-time-feeds"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/subway-arrivals",
+              "guides/direction",
+              "guides/bus-tracking",
+              "guides/service-alerts",
+              "guides/nearby-stops",
+              "guides/arrival-boards",
+              "guides/routes-and-stations"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": [
+              "configuration/setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "SDK Reference",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/subway",
+              "api-reference/direction",
+              "api-reference/bus",
+              "api-reference/alerts",
+              "api-reference/stops",
+              "api-reference/subway-arrival-board",
+              "api-reference/subway-route-stations",
+              "api-reference/bus-arrival-board",
+              "api-reference/bus-route-stops",
+              "api-reference/routes",
+              "api-reference/stops-batch"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "href": "https://www.mtaapi.dev/dashboard",
+        "label": "Dashboard"
+      },
+      {
+        "href": "https://www.mtaapi.dev/blog",
+        "label": "Blog"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/HumanInterfaceDesign/mta-js"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/HumanInterfaceDesign/mta-js"
+    }
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "api": {
+    "url": "full",
+    "mdx": {
+      "auth": {
+        "method": "bearer",
+        "name": "Authorization"
+      },
+      "server": "https://www.mtaapi.dev"
+    },
+    "openapi": "https://www.mtaapi.dev/api/v1/openapi/json",
+    "playground": {
+      "display": "interactive",
+      "proxy": true
+    },
+    "examples": {
+      "languages": [
+        "javascript"
+      ],
+      "prefill": true,
+      "autogenerate": true
+    },
+    "params": {
+      "expanded": "all"
+    }
+  },
+  "favicon": "/images/favicon-16x16.png",
+  "description": "Realtime NYC subway and bus data through one clean API.",
+  "redirects": [
+    {
+      "source": "/configuration/database",
+      "destination": "/configuration/setup",
+      "permanent": true
+    },
+    {
+      "source": "/quickstart",
+      "destination": "/",
+      "permanent": true
+    }
+  ],
+  "logo": {
+    "light": "/images/logo2.svg",
+    "dark": "/images/logo2.svg",
+    "href": "https://www.mtaapi.dev"
+  },
+  "background": {
+    "color": {
+      "light": "#fff",
+      "dark": "#000"
+    }
+  },
+  "icons": {
+    "library": "tabler"
+  },
+  "markdown": {
+    "schema": true
+  },
+  "integrations": {
+    "telemetry": {
+      "enabled": false
+    }
+  }
+}

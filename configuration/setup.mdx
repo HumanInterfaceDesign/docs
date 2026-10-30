@@ -1,0 +1,126 @@
+---
+title: "Configure the mta-js client and options"
+description: "Customize the mta-js client with options for database backend, response cache duration, and request timeouts to fit your application's needs."
+sidebarTitle: "Overview"
+---
+
+<Note>
+  **The fastest way to use mta-js is the hosted API at [mtaapi.dev](https://www.mtaapi.dev).** Pass `apiKey` and you're done — no BusTime key, no GTFS imports, no stop search setup.
+
+  Self-host only when you need full control over the data path, want to deploy in an air-gapped environment, or have already invested in MTA developer credentials. Everything below is for that case.
+</Note>
+
+In direct-feed mode, mta-js talks straight to MTA's realtime GTFS-RT and BusTime APIs. The public method names (`mta.subway.arrivals`, `mta.bus.arrivals`, `mta.bus.vehicles`, `mta.alerts.current`, `mta.stops.near`) stay the same — only the constructor changes.
+
+<Warning>
+  Direct-feed mode has **no bundled database** in mta-js 2.0. There's no SQLite, no Turso, and no persistent GTFS storage. Stop lookups rely on the optional in-memory `staticData` seed described below. For production stop search, prefer the hosted API — it serves a compact Blob-backed snapshot so SDK consumers don't have to manage GTFS imports.
+</Warning>
+
+## Direct-feed client
+
+Pass a `busTimeKey` instead of an `apiKey`:
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({
+  busTimeKey: process.env.MTA_BUS_KEY,
+})
+
+await mta.subway.arrivals({ stopId: 'L08', route: 'L' })
+await mta.bus.arrivals({ stopId: '308214', route: 'M23' })
+await mta.bus.vehicles({ route: 'B63' })
+await mta.alerts.current({ mode: 'subway' })
+```
+
+Subway feeds and service alerts work without any key. `busTimeKey` is only required for bus realtime endpoints (`mta.bus.arrivals`, `mta.bus.vehicles`) — request one from the [MTA BusTime developer portal](https://bustime.mta.info/wiki/Developers/Index).
+
+## Adding stop and route metadata
+
+Without the hosted API, mta-js has no built-in GTFS database, so stop and route names won't resolve automatically. Pass a small in-memory `staticData` seed to get richer local metadata for the stops you care about:
+
+```typescript
+const mta = new MTA({
+  busTimeKey: process.env.MTA_BUS_KEY,
+  staticData: {
+    stops: [
+      {
+        stop_id: 'L08',
+        stop_name: 'Bedford Av',
+        stop_lat: 40.717304,
+        stop_lon: -73.956872,
+      },
+    ],
+    routes: [
+      {
+        route_id: 'L',
+        route_short_name: 'L',
+        route_long_name: '14 St-Canarsie Local',
+      },
+    ],
+  },
+  staticDataMode: 'subway',
+})
+```
+
+This is intended for a handful of well-known stops, internal tooling, or tests. **It is not a replacement for full GTFS static data.** If you need comprehensive stop search across the system, use the hosted API.
+
+## Constructor options
+
+| Option | Type | Description |  |
+| --- | --- | --- | --- |
+| `apiKey` | `string` | Hosted [mtaapi.dev](https://www.mtaapi.dev) API key. When set, requests go to `https://www.mtaapi.dev` and other realtime options are ignored. |  |
+| `apiBaseUrl` | `string` | Override the hosted API base URL. Useful for tests, staging, or private deployments. Only applies with `apiKey`. |  |
+| `busTimeKey` | `string` | MTA BusTime API key. Required only for bus realtime endpoints in direct-feed mode. |  |
+| `staticData` | `object` | Optional in-memory seed of `stops` and `routes` for direct-feed mode. |  |
+| `staticDataMode` | \`'subway' | 'bus'\` | Which transit mode the `staticData` seed applies to. |
+
+## Framework integration
+
+<Tabs>
+  <Tab title="Node.js">
+    ```typescript
+    // src/mta.ts
+    import { MTA } from 'mta-js'
+    
+    export const mta = new MTA({
+      busTimeKey: process.env.MTA_BUS_KEY,
+    })
+    ```
+  </Tab>
+  <Tab title="Next.js">
+    Direct-feed mta-js works in both Node.js runtime and Edge runtime — there's no SQLite to require Node APIs anymore.
+
+    ```typescript
+    // app/api/arrivals/route.ts
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({
+      busTimeKey: process.env.MTA_BUS_KEY,
+    })
+    
+    export async function GET() {
+      const arrivals = await mta.subway.arrivals({ stopId: 'L08', route: 'L' })
+      return Response.json(arrivals)
+    }
+    ```
+  </Tab>
+  <Tab title="Express">
+    ```typescript
+    import express from 'express'
+    import { MTA } from 'mta-js'
+    
+    const app = express()
+    const mta = new MTA({ busTimeKey: process.env.MTA_BUS_KEY })
+    
+    app.get('/arrivals', async (req, res) => {
+      const { stopId, route } = req.query as { stopId: string; route: string }
+      res.json(await mta.subway.arrivals({ stopId, route }))
+    })
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Still deciding? **Start with [mtaapi.dev](https://www.mtaapi.dev)**. You can switch to direct-feed mode later without changing your application code — only the constructor options change.
+</Tip>

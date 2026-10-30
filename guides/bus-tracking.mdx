@@ -1,0 +1,178 @@
+---
+title: "Track live bus vehicle positions by route"
+description: "Use mta-js to get real-time vehicle positions for any MTA bus route, including GPS coordinates, heading, next stop, and occupancy status."
+sidebarTitle: "Bus Tracking"
+---
+
+This guide shows you how to fetch live bus vehicle positions for a specific route. You will call `mta.bus.vehicles()` with a route ID, extract latitude and longitude from each vehicle, and display them in a list or on a map.
+
+<Steps>
+  <Step title="Find your route ID">
+    MTA bus route IDs combine a borough prefix with the route number. The prefix identifies which borough the route primarily serves.
+
+    | Prefix | Borough |
+    | --- | --- |
+    | `B` | Brooklyn |
+    | `M` | Manhattan |
+    | `Q` | Queens |
+    | `Bx` | The Bronx |
+    | `S` | Staten Island |
+
+    Some common examples:
+
+    | Route ID | Route |
+    | --- | --- |
+    | `B63` | 5th Ave / Atlantic Ave, Brooklyn |
+    | `M15` | 1st / 2nd Ave, Manhattan |
+    | `Q58` | Myrtle Ave, Queens |
+    | `Bx12` | Fordham Road, The Bronx |
+
+    Pass the route ID as a string, using the exact casing shown above (e.g., `'Bx12'`, not `'BX12'`).
+  </Step>
+  <Step title="Call mta.bus.vehicles()">
+    Initialize the `MTA` client and call `mta.bus.vehicles()` with the `route` you want to track.
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    
+    const data = await mta.bus.vehicles({ route: 'B63' })
+    ```
+  </Step>
+  <Step title="Process vehicle positions">
+    The response contains a `vehicles` array. Map over it to extract each bus's position and relevant metadata.
+
+    ```typescript
+    const positions = data.vehicles.map((vehicle) => ({
+      id: vehicle.vehicleId,
+      lat: vehicle.lat,
+      lon: vehicle.lon,
+      bearing: vehicle.bearing,
+      nextStop: vehicle.nextStop,
+      occupancy: vehicle.occupancyStatus,
+    }))
+    
+    for (const bus of positions) {
+      console.log(
+        `Bus ${bus.id} — (${bus.lat}, ${bus.lon}) — next stop: ${bus.nextStop}`
+      )
+    }
+    ```
+
+    **Example response:**
+
+    ```json
+    {
+      "route": "B63",
+      "vehicles": [
+        {
+          "vehicleId": "MTA_8432",
+          "lat": 40.6782,
+          "lon": -73.9442,
+          "bearing": 180,
+          "occupancyStatus": "MANY_SEATS_AVAILABLE",
+          "nextStop": "5th Ave & Atlantic Ave"
+        },
+        {
+          "vehicleId": "MTA_8917",
+          "lat": 40.6651,
+          "lon": -73.9890,
+          "bearing": 0,
+          "occupancyStatus": "FEW_SEATS_AVAILABLE",
+          "nextStop": "5th Ave & 39th St"
+        }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Display on a map or list">
+    Use the `lat` and `lon` values to place markers on a mapping library of your choice. The `bearing` field gives the vehicle's heading in degrees (0 = north, 90 = east), which you can use to rotate a bus icon.
+
+    ```typescript
+    // Example: add markers to a Leaflet map
+    for (const bus of positions) {
+      L.marker([bus.lat, bus.lon])
+        .bindPopup(`Bus ${bus.id}<br>Next stop: ${bus.nextStop}`)
+        .addTo(map)
+    }
+    ```
+
+    For a simple text list, sort vehicles by proximity to a reference point using the Haversine formula or a geospatial library.
+  </Step>
+</Steps>
+
+## Complete example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+interface BusPosition {
+  vehicleId: string
+  lat: number
+  lon: number
+  bearing: number
+  occupancyStatus: string
+  nextStop: string
+}
+
+async function getBusPositions(route: string): Promise<BusPosition[]> {
+  const data = await mta.bus.vehicles({ route })
+  return data.vehicles
+}
+
+async function displayBusRoute(route: string): Promise<void> {
+  try {
+    const vehicles = await getBusPositions(route)
+
+    if (vehicles.length === 0) {
+      console.log(`No active buses found on route ${route}.`)
+      return
+    }
+
+    console.log(`${vehicles.length} active buses on route ${route}:\n`)
+
+    for (const bus of vehicles) {
+      console.log(`Bus ${bus.vehicleId}`)
+      console.log(`Position: ${bus.lat}, ${bus.lon}`)
+      console.log(`Heading:  ${bus.bearing}°`)
+      console.log(`Next stop: ${bus.nextStop}`)
+      console.log(`Occupancy: ${bus.occupancyStatus}\n`)
+    }
+  } catch (error) {
+    console.error(`Failed to fetch vehicles for route ${route}:`, error)
+  }
+}
+
+await displayBusRoute('B63')
+```
+
+## Occupancy status
+
+The `occupancyStatus` field reflects how full a bus is, based on passenger load data reported by the vehicle. The possible values follow the GTFS-RT occupancy standard:
+
+| Value | Meaning |
+| --- | --- |
+| `EMPTY` | No passengers on board |
+| `MANY_SEATS_AVAILABLE` | Plenty of open seats |
+| `FEW_SEATS_AVAILABLE` | Seats limited |
+| `STANDING_ROOM_ONLY` | No seats, standing room available |
+| `CRUSHED_STANDING_ROOM_ONLY` | Very crowded |
+| `FULL` | Bus is not accepting passengers |
+| `NOT_ACCEPTING_PASSENGERS` | Out of service or not boarding |
+
+Not all vehicles report occupancy data. When the field is absent or `null`, omit it from your UI rather than showing a default value.
+
+<Tip>
+  Combine `mta.bus.vehicles()` with `mta.stops.near()` to show the upcoming stops along a vehicle's path. Fetch nearby stops using the bus's current `lat` and `lon`, then pass the closest `stopId` into `mta.subway.arrivals()` or render the stop list alongside the bus position.
+
+  ```typescript
+  const nearbyStops = await mta.stops.near({
+    lat: bus.lat,
+    lon: bus.lon,
+    modes: ['bus'],
+  })
+  ```
+</Tip>

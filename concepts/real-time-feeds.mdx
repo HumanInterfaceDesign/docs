@@ -1,0 +1,93 @@
+---
+title: "Real-time data feeds and update frequency"
+description: "Learn how mta-js fetches live MTA GTFS-RT feeds, how often data refreshes, and what to expect when feeds are delayed or unavailable."
+sidebarTitle: "Real-Time Feeds"
+---
+
+mta-js reads from MTA's GTFS Realtime (GTFS-RT) protocol buffer feeds to provide live transit data. Understanding how these feeds work—what they publish, how often they update, and when they can fail—helps you build applications that handle real-world conditions gracefully rather than assuming data is always fresh and complete.
+
+## GTFS-RT feeds
+
+GTFS Realtime is an open standard, defined by Google and maintained by the transit community, for publishing real-time transit updates on top of a GTFS static dataset. A GTFS-RT feed is a binary protocol buffer stream that a transit agency publishes at a fixed URL. Clients fetch the feed, decode it, and process the updates contained within.
+
+MTA publishes separate GTFS-RT feeds for subway and bus:
+
+- **Subway feeds** provide trip updates (arrival and departure predictions) and vehicle positions for each subway division. The A/C/E lines, for example, are on a different feed endpoint than the 1/2/3 lines. mta-js handles feed routing automatically—you query by stop ID or route ID and the SDK fetches the correct feed.
+- **Bus feeds** provide vehicle positions and trip updates for the full bus network, including local, express, and Select Bus Service routes.
+- **Alert feeds** publish service alerts covering both subway and bus in a single feed.
+
+mta-js fetches, decodes, and normalizes these feeds into the TypeScript objects described in the [data model](/concepts/data-model).
+
+## Update frequency
+
+Feed update frequency varies by mode. Plan your polling intervals around these approximate schedules:
+
+| Feed | Typical update interval |
+|------|------------------------|
+| Subway arrivals | Every 30 seconds |
+| Bus vehicle positions | Every 30–60 seconds |
+| Service alerts | As changes occur |
+
+Subway feeds are generally the most consistent. Bus feed latency can vary depending on network conditions and the volume of active vehicles. Alert feeds are event-driven rather than time-driven—a new alert may appear within seconds of MTA publishing it, or it may lag by a few minutes.
+
+<Note>
+  These intervals reflect MTA's typical publishing cadence and are not guaranteed. During high-traffic periods or system incidents, feeds may update more slowly or temporarily stop publishing.
+</Note>
+
+## Data availability
+
+Not all routes and stops have equal coverage in MTA's real-time feeds. Most subway lines publish arrival predictions reliably, but some service patterns—late-night shuttles, planned work reroutes, and certain express services—may produce sparse or missing predictions. Bus coverage is generally comprehensive for routes that run GTFS-compatible vehicles.
+
+When a stop or route has no current data, mta-js returns an empty array rather than throwing an error. Always write your application to handle empty arrays gracefully:
+
+```typescript
+const arrivals = await mta.subway.arrivals({ stopId: 'A27', route: 'A' })
+
+if (arrivals.length === 0) {
+  console.log('No arrival predictions available for this stop right now.')
+} else {
+  for (const arrival of arrivals) {
+    const eta = new Date(arrival.arrivalTime * 1000)
+    console.log(`${arrival.routeId} train arriving at ${eta.toLocaleTimeString()}`)
+  }
+}
+```
+
+## Handling stale data
+
+Because mta-js fetches a snapshot of the feed on each call, your application must poll to stay current. A single fetch gives you the state of the feed at that moment; it does not update automatically afterward.
+
+<Tip>
+  Poll at an interval that matches the feed's update cadence. For subway arrivals, polling every 30 seconds keeps your data roughly in sync with MTA's feed. Polling more frequently wastes requests without gaining fresher data; polling much less frequently means your UI can show predictions that are significantly out of date.
+</Tip>
+
+Here is a simple polling pattern using `setInterval`:
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA(process.env.MTA_API_KEY)
+
+async function fetchArrivals() {
+  try {
+    const arrivals = await mta.subway.arrivals({ stopId: 'A27', route: 'A' })
+    renderArrivals(arrivals)
+  } catch (error) {
+    console.error('Failed to fetch arrivals:', error)
+    // Continue polling — a single failure should not stop your loop
+  }
+}
+
+// Fetch immediately, then every 30 seconds
+fetchArrivals()
+const interval = setInterval(fetchArrivals, 30_000)
+
+// To stop polling:
+// clearInterval(interval)
+```
+
+In serverless environments where long-running intervals are not possible, trigger a fetch on each incoming request and rely on a cache layer—such as a short-lived Redis key or an edge cache—to avoid hammering MTA's feed endpoints on every user request.
+
+<Note>
+  mta-js caches MTA's GTFS static data locally to avoid re-downloading the full dataset on every startup. On first run, the SDK may take a few extra seconds to hydrate this cache. Subsequent starts use the cached data and initialize significantly faster.
+</Note>

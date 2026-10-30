@@ -1,0 +1,26 @@
+---
+title: "mta.stops.byIds() — batch stop lookup"
+description: "Reference for GET /api/v1/stops. Resolve multiple stop IDs in a single request, preserving request order, optionally with served routes."
+sidebarTitle: "Stops by ID"
+openapi: "GET /api/v1/stops"
+---
+
+Resolves many stops at once. Pass a comma-separated `ids` list (for example `A27,L06,308214`) to hydrate a saved-stops list or a map viewport without one request per ID.
+
+The response preserves one result per requested ID, in order: `{ requestedId, found, stop?, servedRoutes? }`. When `found` is `false`, the ID didn't resolve. Set `includeRoutes=true` to attach `servedRoutes` for each resolved stop. For nearby/geo search, use the [Stops reference](/api-reference/stops).
+
+### SDK
+
+```typescript
+const results = await mta.stops.byIds({
+  ids: ['A27', 'L06', '308214'],
+  includeRoutes: true,
+})
+
+for (const result of results) {
+  if (result.found) console.log(result.stop.name)
+  else console.log(`${result.requestedId} not found`)
+}
+```
+
+See the [Routes & Stations guide](/guides/routes-and-stations).

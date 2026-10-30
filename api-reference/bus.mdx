@@ -1,0 +1,185 @@
+---
+title: "mta.bus.vehicles() — live bus positions by route"
+description: "Reference for mta.bus in mta-js. Retrieve live bus vehicle positions, GPS coordinates, heading, next stop, and occupancy for any MTA route."
+sidebarTitle: "Bus"
+openapi: "GET /api/v1/bus/arrivals"
+---
+
+The `mta.bus` namespace provides access to real-time bus data sourced from the MTA's Bus Time API. Use `mta.bus.arrivals` to get the next predicted buses at a specific stop, and `mta.bus.vehicles` to see where every active bus on a route is right now, including its coordinates, bearing, next stop, and passenger occupancy status.
+
+## `mta.bus.arrivals(params)`
+
+Returns upcoming bus arrival predictions for a single stop. Pass an optional `route` to limit results to one route serving that stop.
+
+### Parameters
+
+<ParamField body="stopId" type="string" required>
+  The MTA bus stop ID to query (for example, `'308214'`). Look up stop IDs with `mta.stops.near` or from the MTA's published stop data.
+</ParamField>
+
+<ParamField body="route" type="string">
+  Optional route filter (for example, `'M23'`). When omitted, all routes serving the stop are returned.
+</ParamField>
+
+<ParamField body="limit" type="number">
+  Maximum number of upcoming arrivals to return. Must be between `1` and `100`.
+</ParamField>
+
+<ParamField body="includeRaw" type="boolean">
+  When `true`, the response includes the raw upstream feed payload alongside the normalized arrivals. Useful for debugging or accessing fields not yet surfaced by the normalized API.
+</ParamField>
+
+### Code example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+const response = await mta.bus.arrivals({
+  stopId: '308214',
+  route: 'M23',
+  limit: 5,
+})
+
+for (const arrival of response.arrivals) {
+  console.log(`${arrival.route} — ${arrival.headsign} — vehicle ${arrival.vehicleId}`)
+}
+```
+
+## `mta.bus.vehicles(params)`
+
+## `mta.bus.vehicles(params)`
+
+Returns active bus vehicles. Pass `route` to scope to a single route, or `vehicleId` to look up a specific vehicle. Data is refreshed approximately every 30 seconds and reflects the most recent position reported by each vehicle's onboard GPS unit.
+
+### Parameters
+
+<ParamField body="route" type="string">
+  Optional bus route ID to filter on (for example, `'B63'` for the Brooklyn route along Fifth Avenue, or `'M15'` for the Manhattan crosstown route on First and Second Avenue). Route IDs are case-sensitive and match MTA's published route identifiers.
+</ParamField>
+
+<ParamField body="vehicleId" type="string">
+  Optional MTA vehicle ID to look up a single vehicle (for example, `'MTA_8741'`).
+</ParamField>
+
+<ParamField body="limit" type="number">
+  Maximum number of vehicles to return. Must be between `1` and `100`.
+</ParamField>
+
+<ParamField body="includeRaw" type="boolean">
+  When `true`, the response includes the raw upstream feed payload alongside the normalized vehicle list.
+</ParamField>
+
+### TypeScript signature
+
+```typescript
+interface BusVehiclesParams {
+  route?: string
+  vehicleId?: string
+  limit?: number
+  includeRaw?: boolean
+}
+
+interface BusVehicle {
+  vehicleId: string
+  lat: number
+  lon: number
+  bearing: number
+  nextStop: string
+  occupancyStatus: string
+}
+
+interface BusVehiclesResponse {
+  route: string
+  vehicles: BusVehicle[]
+}
+
+mta.bus.vehicles(params: BusVehiclesParams): Promise<BusVehiclesResponse>
+```
+
+### Response fields
+
+<ResponseField name="route" type="string" required>
+  The route ID that was queried, echoed back in the response.
+</ResponseField>
+
+<ResponseField name="vehicles" type="object[]" required>
+  An array of active vehicles on the route. Returns an empty array if no vehicles are currently in service.
+
+  <Expandable title="vehicles properties">
+    <ResponseField name="vehicleId" type="string" required>
+      The unique identifier for the vehicle, matching the MTA's fleet numbering system.
+    </ResponseField>
+
+    <ResponseField name="lat" type="number" required>
+      The vehicle's current latitude in decimal degrees (WGS 84).
+    </ResponseField>
+
+    <ResponseField name="lon" type="number" required>
+      The vehicle's current longitude in decimal degrees (WGS 84).
+    </ResponseField>
+
+    <ResponseField name="bearing" type="number" required>
+      The vehicle's direction of travel in degrees, measured clockwise from true north (0–359).
+    </ResponseField>
+
+    <ResponseField name="nextStop" type="string" required>
+      The name or ID of the next scheduled stop for this vehicle.
+    </ResponseField>
+
+    <ResponseField name="occupancyStatus" type="string" required>
+      The current passenger load level. Possible values: `'EMPTY'`, `'MANY_SEATS_AVAILABLE'`, `'FEW_SEATS_AVAILABLE'`, `'STANDING_ROOM_ONLY'`, `'CRUSHED_STANDING_ROOM_ONLY'`, `'FULL'`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Code example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+const response = await mta.bus.vehicles({ route: 'B63', limit: 10 })
+
+console.log(`${response.vehicles.length} buses active on route ${response.route}`)
+
+for (const vehicle of response.vehicles) {
+  console.log(
+    `Bus ${vehicle.vehicleId} at (${vehicle.lat}, ${vehicle.lon}) ` +
+    `heading ${vehicle.bearing}° — next stop: ${vehicle.nextStop} ` +
+    `— occupancy: ${vehicle.occupancyStatus}`
+  )
+}
+```
+
+### Example response
+
+```json
+{
+  "route": "B63",
+  "vehicles": [
+    {
+      "vehicleId": "MTA_8741",
+      "lat": 40.6765,
+      "lon": -73.9927,
+      "bearing": 342,
+      "nextStop": "5 AV/ATLANTIC AV",
+      "occupancyStatus": "MANY_SEATS_AVAILABLE"
+    },
+    {
+      "vehicleId": "MTA_8804",
+      "lat": 40.6621,
+      "lon": -73.9891,
+      "bearing": 162,
+      "nextStop": "5 AV/65 ST",
+      "occupancyStatus": "FEW_SEATS_AVAILABLE"
+    }
+  ]
+}
+```
+
+<Tip>
+  Use `bearing` together with `lat` and `lon` to render animated bus icons on a map that point in the correct direction of travel.
+</Tip>

@@ -1,0 +1,79 @@
+---
+title: "List routes, stations, and stops"
+description: "Use mta.routes.list(), mta.subway.routeStations(), mta.bus.routeStops(), and mta.stops.byIds() to build route pickers, route maps, and hydrate saved stops."
+sidebarTitle: "Routes & Stations"
+---
+
+Beyond realtime arrivals, mta-js exposes the catalog behind the system: the list of routes, the ordered stations on a subway line, the ordered stops on a bus route, and batch lookups to resolve stop IDs you already have. Use these to build route pickers, draw a route map, or hydrate saved stop IDs into names and coordinates.
+
+<Note>
+  These endpoints require a hosted `apiKey`. See [Authentication](/authentication) to get one.
+</Note>
+
+## Prerequisites
+
+- `mta-js` installed (`npm install mta-js`)
+- An MTA API key set as `MTA_API_KEY` in your environment
+
+<Steps>
+  <Step title="List routes for a picker">
+    `mta.routes.list()` returns the route catalog. Pass the modes you care about, or omit for everything.
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    
+    const routes = await mta.routes.list({ modes: ['subway', 'bus'] })
+    
+    for (const route of routes) {
+      console.log(`${route.shortName ?? route.id} — ${route.longName ?? ''} (${route.mode})`)
+    }
+    ```
+  </Step>
+  <Step title="Get the ordered stations on a subway route">
+    `mta.subway.routeStations()` returns the route's stop patterns. Pass a `direction` to order them in the rider's direction of travel.
+
+    ```typescript
+    const stations = await mta.subway.routeStations({ route: 'L', direction: 'north' })
+    
+    for (const pattern of stations.directions) {
+      pattern.stops.forEach((stop, i) => console.log(`${i}. ${stop.name} (${stop.id})`))
+    }
+    ```
+  </Step>
+  <Step title="Get the ordered stops on a bus route">
+    `mta.bus.routeStops()` is the bus equivalent, returning ordered stops grouped by direction.
+
+    ```typescript
+    const routeStops = await mta.bus.routeStops({ route: 'M23' })
+    
+    for (const pattern of routeStops.directions) {
+      console.log(`Direction ${pattern.direction}: ${pattern.stops.length} stops`)
+    }
+    ```
+  </Step>
+  <Step title="Hydrate stop IDs you already have">
+    When you have stored stop IDs (favorites, a saved trip), resolve them in one call with `mta.stops.byIds()`. Each result keeps its `requestedId` and a `found` flag; set `includeRoutes` to attach the routes serving each stop.
+
+    ```typescript
+    const results = await mta.stops.byIds({
+      ids: ['A27', 'L06', '308214'],
+      includeRoutes: true,
+    })
+    
+    for (const result of results) {
+      if (result.found) {
+        const lines = result.servedRoutes?.map((r) => r.shortName ?? r.id).join(', ')
+        console.log(`${result.stop.name} — ${lines}`)
+      } else {
+        console.log(`${result.requestedId} — not found`)
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  These guides use the SDK. For the raw REST endpoints, see [Routes](/api-reference/routes), [Subway Route Stations](/api-reference/subway-route-stations), [Bus Route Stops](/api-reference/bus-route-stops), and [Stops by ID](/api-reference/stops-batch).
+</Note>

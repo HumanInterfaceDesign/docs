@@ -1,0 +1,24 @@
+---
+title: "mta.subway.routeStations() — ordered stations on a route"
+description: "Reference for GET /api/v1/subway/routes/{route}/stations. Get the ordered stations a subway route serves, optionally hydrated with arrivals."
+sidebarTitle: "Subway Route Stations"
+openapi: "GET /api/v1/subway/routes/{route}/stations"
+---
+
+Returns the ordered stations a subway route serves. Pass the route in the path (for example `L`) and an optional `direction` to order stations in the rider's direction of travel. Set `includeArrivals=true` to attach live arrivals to each station (bounded by `limitArrivals` and `limitStops`).
+
+The response is a `RouteStopsResponse`: `{ route, mode, directions: [{ direction, headsigns?, stops: [...] }] }`, where each stop carries an optional `arrivals` array when hydrated.
+
+### SDK
+
+```typescript
+const stations = await mta.subway.routeStations({ route: 'L', direction: 'north' })
+
+for (const pattern of stations.directions) {
+  for (const stop of pattern.stops) {
+    console.log(stop.name)
+  }
+}
+```
+
+See the [Routes & Stations guide](/guides/routes-and-stations).

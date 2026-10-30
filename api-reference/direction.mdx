@@ -1,0 +1,158 @@
+---
+title: "mta.subway.direction() — resolve a destination to a direction"
+description: "Reference for mta.subway.direction in mta-js. Resolve a rider-facing destination string into a typed north/south direction, terminal, and display label."
+sidebarTitle: "Direction"
+openapi: "GET /api/v1/subway/direction"
+---
+
+The `mta.subway.direction` method resolves a rider-facing destination string (such as `"Union Sq"`) into a typed direction of travel, the terminal the train heads toward, and a ready-to-display label. Use it when a rider tells you _where they want to go_ and you need to translate that into the `north` / `south` direction the realtime feed uses — for example, to pre-select the correct direction in an arrivals UI.
+
+This method requires a hosted API key. It resolves destinations against the hosted API's static GTFS route order and is not available in direct-feed mode.
+
+## `mta.subway.direction(params)`
+
+### Parameters
+
+<ParamField body="route" type="string" required>
+  The subway route the rider is traveling on (for example, `'L'`).
+</ParamField>
+
+<ParamField body="fromStopId" type="string" required>
+  The stop ID the rider is departing from (for example, `'L08'` for Bedford Av).
+</ParamField>
+
+<ParamField body="destination" type="string" required>
+  A rider-facing destination string to resolve against the route's stop order (for example, `'Union Sq'`). Matching tolerates casing and common station-name variations.
+</ParamField>
+
+### TypeScript signature
+
+```typescript
+interface SubwayDirectionQuery {
+  route: SubwayRoute
+  fromStopId: SubwayStopId
+  destination: string
+}
+
+// Subway feed directions are always north/south, even on east-west lines
+type SubwayResolvedDirection = 'north' | 'south'
+
+interface SubwayDirectionResolution {
+  route: Route
+  destination: string             // the string you passed in
+  normalizedDestination: string   // cleaned form used for matching
+  resolved: boolean               // whether a direction was determined
+  direction?: SubwayResolvedDirection
+  displayDirection?: string       // e.g. "toward 8 Av"
+  terminal?: string               // terminal station the train heads toward
+  fromStop?: Stop
+  destinationStop?: Stop
+  matches?: Stop[]                // candidate stops when the match is ambiguous
+  reason?: string                 // why resolution failed, when resolved is false
+}
+
+mta.subway.direction(params: SubwayDirectionQuery): Promise<SubwayDirectionResolution>
+```
+
+The method always resolves to a `SubwayDirectionResolution` object — it does not return `null`. Branch on `resolved`: when `true`, `direction`, `displayDirection`, `terminal`, and `destinationStop` are populated; when `false`, `reason` explains why, and `matches` may list ambiguous candidates.
+
+### Response fields
+
+<ResponseField name="route" type="Route" required>
+  The resolved route object: `id`, plus optional `shortName`, `longName`, `color`, `textColor`, and `type`.
+</ResponseField>
+
+<ResponseField name="destination" type="string" required>
+  The destination string exactly as passed in.
+</ResponseField>
+
+<ResponseField name="normalizedDestination" type="string" required>
+  The cleaned/normalized form of the destination used for matching.
+</ResponseField>
+
+<ResponseField name="resolved" type="boolean" required>
+  Whether a direction was successfully determined. When `false`, inspect `reason` and `matches`.
+</ResponseField>
+
+<ResponseField name="direction" type="string">
+  The resolved feed direction: `'north'` or `'south'`. Present when `resolved` is `true`.
+</ResponseField>
+
+<ResponseField name="displayDirection" type="string">
+  A human-readable label such as `"toward 8 Av"`. Present when `resolved` is `true`.
+</ResponseField>
+
+<ResponseField name="terminal" type="string">
+  The name of the terminal station the train heads toward in the resolved direction.
+</ResponseField>
+
+<ResponseField name="fromStop" type="Stop">
+  The resolved origin stop object for `fromStopId`.
+</ResponseField>
+
+<ResponseField name="destinationStop" type="Stop">
+  The resolved destination stop object that matched `destination`.
+</ResponseField>
+
+<ResponseField name="matches" type="Stop[]">
+  Candidate stops when the destination is ambiguous and could not be narrowed to a single stop.
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  A short explanation of why resolution failed. Present when `resolved` is `false`.
+</ResponseField>
+
+### Code example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+// A rider at Bedford Av (L08) wants to reach Union Sq — which way do they go?
+const resolution = await mta.subway.direction({
+  route: 'L',
+  fromStopId: 'L08',
+  destination: 'Union Sq',
+})
+
+if (resolution.resolved) {
+  console.log(resolution.direction)         // "north"
+  console.log(resolution.displayDirection)  // "toward 8 Av"
+  console.log(resolution.terminal)          // "8 Av"
+
+  // Feed the resolved direction straight into arrivals
+  const arrivals = await mta.subway.arrivals({
+    stopId: 'L08',
+    route: 'L',
+    direction: resolution.direction,
+  })
+  console.log(arrivals)
+} else {
+  console.warn(`Couldn't resolve a direction: ${resolution.reason}`)
+}
+```
+
+### Example response
+
+```json
+{
+  "route": { "id": "L", "shortName": "L", "color": "#A7A9AC" },
+  "destination": "Union Sq",
+  "normalizedDestination": "union sq",
+  "resolved": true,
+  "direction": "north",
+  "displayDirection": "toward 8 Av",
+  "terminal": "8 Av",
+  "fromStop": { "id": "L08", "name": "Bedford Av" },
+  "destinationStop": { "id": "L02", "name": "14 St-Union Sq" }
+}
+```
+
+<Note>
+  NYC Subway realtime feeds use NYCT's `north` / `south` stop directions, even on east-west lines like the L. `mta.subway.direction` always resolves to one of those two feed directions, and [`mta.subway.arrivals`](/api-reference/subway) accepts the same `direction` value — along with the rider-facing `east` / `west` and `uptown` / `downtown` aliases.
+</Note>
+
+<Note>
+  This method is only available with a hosted `apiKey`. It calls the hosted endpoint and resolves against the managed static GTFS snapshot; it is not available in direct-feed mode.
+</Note>

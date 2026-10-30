@@ -1,0 +1,174 @@
+---
+title: "mta.subway.arrivals() — real-time subway predictions"
+description: "Reference for mta.subway in mta-js. Fetch real-time arrival predictions for any subway stop and route, with Unix timestamps and direction of travel."
+sidebarTitle: "Subway"
+openapi: "GET /api/v1/subway/arrivals"
+---
+
+The `mta.subway` namespace gives you access to real-time arrival data sourced directly from the MTA's GTFS-Realtime feeds. Use `mta.subway.arrivals` to retrieve the next trains arriving at any subway stop for a specific route, including trip IDs, predicted arrival timestamps, and direction of travel.
+
+## `mta.subway.arrivals(params)`
+
+Returns real-time arrival predictions for a given stop and route combination. Arrival times are Unix timestamps in seconds and reflect the MTA's latest feed update, typically refreshed every 30 seconds.
+
+### Parameters
+
+<ParamField body="stopId" type="string" required>
+  The MTA stop ID for the station you want to query (for example, `'A27'` for Howard Beach–JFK Airport on the A line). You can look up stop IDs using [`mta.stops.near`](/api-reference/stops) or the [MTA's static GTFS data](https://api.mta.info).
+</ParamField>
+
+<ParamField body="route" type="string">
+  The route ID to filter arrivals by (for example, `'A'`, `'1'`, or `'N'`). Optional — when omitted, arrivals across all routes serving the stop are returned. When supplied, only arrivals for that route are returned.
+</ParamField>
+
+<ParamField body="direction" type="string">
+  Optional direction filter. Accepts the feed values `'north'`, `'south'`, `'east'`, `'west'`, `'unknown'`, plus the rider-facing aliases `'uptown'` (→ north) and `'downtown'` (→ south).
+</ParamField>
+
+<ParamField body="limit" type="number">
+  Maximum number of arrivals to return, between `1` and `100`. Defaults to `20`.
+</ParamField>
+
+<ParamField body="includeRaw" type="boolean">
+  When `true`, each arrival includes the underlying GTFS-RT entity on a `raw` field. Defaults to `false`.
+</ParamField>
+
+### TypeScript signature
+
+```typescript
+interface SubwayArrivalQuery {
+  stopId: SubwayStopId
+  route?: SubwayRoute
+  direction?: Direction | 'uptown' | 'downtown'
+  limit?: number
+  includeRaw?: boolean
+}
+
+interface Arrival {
+  mode: TransitMode          // 'subway' | 'bus' | 'lirr' | 'metro-north'
+  route: Route
+  stop: Stop
+  direction: Direction       // 'north' | 'south' | 'east' | 'west' | 'unknown'
+  destination?: string       // headsign / terminal station name
+  displayDirection?: string  // e.g. "toward 8 Av" or "northbound"
+  headsign?: string
+  arrivalTime: string        // ISO 8601
+  departureTime?: string     // ISO 8601
+  minutes: number
+  tripId?: string
+  realtime: boolean
+  source: 'mta-gtfs-rt' | 'mta-bustime'
+  raw?: unknown              // present when includeRaw: true
+}
+
+mta.subway.arrivals(params: SubwayArrivalQuery): Promise<Arrival[]>
+```
+
+### Response fields
+
+<ResponseField name="arrivals" type="Arrival[]" required>
+  An array of upcoming arrivals, ordered by `arrivalTime` ascending. Returns an empty array if no arrivals are scheduled in the current feed window.
+
+  <Expandable title="Arrival properties">
+    <ResponseField name="mode" type="string" required>
+      Transit mode: always `'subway'` for this endpoint.
+    </ResponseField>
+
+    <ResponseField name="route" type="Route" required>
+      The route object: `id` (required), plus optional `shortName`, `longName`, `color`, `textColor`, and `type`.
+    </ResponseField>
+
+    <ResponseField name="stop" type="Stop" required>
+      The stop object: `id` and `name` (required), plus optional `displayName`, `lat`, `lon`, `parentStation`, `parentId`, and `mode`.
+    </ResponseField>
+
+    <ResponseField name="direction" type="string" required>
+      Direction of travel: `'north'`, `'south'`, `'east'`, `'west'`, or `'unknown'`.
+    </ResponseField>
+
+    <ResponseField name="destination" type="string">
+      The headsign / terminal station name (e.g. `"Inwood-207 St"`). Present when the MTA feed includes trip headsign data.
+    </ResponseField>
+
+    <ResponseField name="displayDirection" type="string">
+      A human-readable direction label (e.g. `"toward 8 Av"` or `"northbound"`). Falls back to a `"<direction>bound"` string when no headsign is available.
+    </ResponseField>
+
+    <ResponseField name="arrivalTime" type="string" required>
+      The predicted arrival time as an ISO 8601 string.
+    </ResponseField>
+
+    <ResponseField name="minutes" type="number" required>
+      Minutes until arrival, clamped to 0.
+    </ResponseField>
+
+    <ResponseField name="tripId" type="string">
+      The GTFS trip ID for this train run.
+    </ResponseField>
+
+    <ResponseField name="realtime" type="boolean" required>
+      Whether this arrival comes from a live GTFS-RT feed (`true`) or a scheduled estimate (`false`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Code example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+const arrivals = await mta.subway.arrivals({
+  stopId: 'L08',
+  route: 'L'
+})
+
+for (const arrival of arrivals) {
+  const label = arrival.displayDirection ?? arrival.destination ?? 'unknown direction'
+  console.log(
+    `${arrival.route.shortName} — ${label} — ${arrival.minutes} min`
+  )
+}
+```
+
+### Example response
+
+```json
+[
+  {
+    "mode": "subway",
+    "route": { "id": "A", "shortName": "A", "color": "#0039A6" },
+    "stop": { "id": "A27", "name": "Howard Beach-JFK Airport", "displayName": "Howard Beach–JFK Airport" },
+    "direction": "south",
+    "destination": "Ozone Park-Lefferts Blvd",
+    "displayDirection": "toward Ozone Park-Lefferts Blvd",
+    "arrivalTime": "2026-05-29T18:37:00.000Z",
+    "minutes": 4,
+    "tripId": "AFA25GEN-A078-Sunday-00_000600_A..S03R",
+    "realtime": true,
+    "source": "mta-gtfs-rt"
+  },
+  {
+    "mode": "subway",
+    "route": { "id": "A", "shortName": "A", "color": "#0039A6" },
+    "stop": { "id": "A27", "name": "Howard Beach-JFK Airport", "displayName": "Howard Beach–JFK Airport" },
+    "direction": "north",
+    "destination": "Inwood-207 St",
+    "displayDirection": "toward Inwood-207 St",
+    "arrivalTime": "2026-05-29T18:49:00.000Z",
+    "minutes": 16,
+    "tripId": "AFA25GEN-A076-Sunday-00_003600_A..N03R",
+    "realtime": true,
+    "source": "mta-gtfs-rt"
+  }
+]
+```
+
+<Note>
+  The MTA feed does not always include arrivals for every route at every stop. If `arrivals` is empty, the train may not be active in the current feed window — check during service hours and verify the `stopId` and `route` combination is valid.
+</Note>
+
+## `mta.subway.direction(params)`
+
+The `mta.subway` namespace also exposes `mta.subway.direction()`, which resolves a rider-facing destination string (such as `"Union Sq"`) into the `north` / `south` feed direction, the terminal the train heads toward, and a display label — handy for pre-selecting the right direction before calling `arrivals`. See the dedicated [Direction reference](/api-reference/direction) for full parameters, types, and examples.

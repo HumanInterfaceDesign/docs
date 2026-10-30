@@ -1,0 +1,23 @@
+---
+title: "mta.subway.arrivalBoard() — nearby subway departure board"
+description: "Reference for GET /api/v1/subway/arrival-board. Find nearby subway stations and group their upcoming arrivals by direction in a single request."
+sidebarTitle: "Subway Arrival Board"
+openapi: "GET /api/v1/subway/arrival-board"
+---
+
+Returns the nearest subway stations to a `lat` / `lon`, with each station's upcoming arrivals already grouped by direction. It combines nearby-station discovery and arrivals into one request — ideal for a lobby departure board or a "stations near me" screen.
+
+Control the board with `limitStations` (max 20, default 5) and `limitArrivals` per direction (max 10, default 3). Pass an optional `route` to restrict every station to a single line. Each entry is `{ station, distanceMeters, directions: [{ direction, headsign?, arrivals[] }] }`.
+
+### SDK
+
+```typescript
+const board = await mta.subway.arrivalBoard({
+  lat: 40.7356,
+  lon: -73.9906,
+  limitStations: 5,
+  limitArrivals: 3,
+})
+```
+
+See the [Arrival Boards guide](/guides/arrival-boards) for an end-to-end walkthrough.

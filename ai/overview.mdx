@@ -1,0 +1,142 @@
+---
+title: "MCP, llms.txt, and skill.md"
+description: "Connect AI tools to the MTA API docs through the hosted MCP server, llms.txt / llms-full.txt files, and an installable Claude skill — all generated automatically."
+sidebarTitle: "AI Tools"
+---
+
+These docs are built to be consumed by AI tools, not just people. Every page is available in machine-readable form, plus there's a hosted MCP server and an installable Claude skill — all generated and kept up to date automatically, at no extra cost. Point your agent at any of the endpoints below to give it grounded, current knowledge of the `mta-js` SDK and the MTA API.
+
+<CardGroup cols={2}>
+  <Card title="MCP server" icon="plug" href="#mcp-server">
+    Connect Cursor, Claude, Codex, VS Code, and other MCP clients to search these docs live.
+  </Card>
+
+  <Card title="llms.txt" icon="file-text" href="#llms-txt">
+    A machine-readable index of every page, for AI tools to discover and navigate.
+  </Card>
+
+  <Card title="skill.md" icon="sparkles" href="#claude-skill">
+    Install these docs as a Claude skill in Claude Code and Claude Desktop.
+  </Card>
+
+  <Card title="Markdown pages" icon="markdown" href="#markdown-for-any-page">
+    Append `.md` to any docs URL to get the raw Markdown of that page.
+  </Card>
+</CardGroup>
+
+## MCP server
+
+The docs are exposed as a hosted [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server, so AI clients can search and read the documentation as a tool — answering questions about the SDK and API with up-to-date context. It exposes a **search** tool and a **filesystem-style navigation** tool over the docs.
+
+**Server URL**
+
+```text
+https://mtaapi.dev/docs/mcp
+```
+
+<Tabs>
+  <Tab title="Cursor">
+    Add the server to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` in your project:
+
+    ```json
+    {
+      "mcpServers": {
+        "mta-api": {
+          "url": "https://mtaapi.dev/docs/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Claude Code">
+    Add the remote MCP server from your terminal:
+
+    ```bash
+    claude mcp add --transport http mta-api https://mtaapi.dev/docs/mcp
+    ```
+  </Tab>
+  <Tab title="Codex">
+    Add the server to `~/.codex/config.toml`:
+
+    ```toml
+    [mcp_servers.mta-api]
+    url = "https://mtaapi.dev/docs/mcp"
+    ```
+
+    Or add it from your terminal:
+
+    ```bash
+    codex mcp add mta-api --url https://mtaapi.dev/docs/mcp
+    ```
+
+    Remote (streamable HTTP) MCP servers require Codex's RMCP client. If the server isn't picked up, enable it in `~/.codex/config.toml`:
+
+    ```toml
+    experimental_use_rmcp_client = true
+    ```
+  </Tab>
+  <Tab title="Claude / Claude Desktop">
+    In **Settings → Connectors**, choose **Add custom connector**, then paste the server URL:
+
+    ```text
+    https://mtaapi.dev/docs/mcp
+    ```
+  </Tab>
+  <Tab title="VS Code">
+    Add the server to `.vscode/mcp.json`:
+
+    ```json
+    {
+      "servers": {
+        "mta-api": {
+          "type": "http",
+          "url": "https://mtaapi.dev/docs/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Once connected, ask your assistant things like _“How do I fetch a subway arrival board with mta-js?”_ and it will pull answers straight from these docs. A discovery endpoint is also published at `/.well-known/mcp` so compatible tools can locate the server automatically.
+
+## llms.txt
+
+Following the [llms.txt standard](https://llmstxt.org), two machine-readable files are generated automatically and stay in sync with these docs:
+
+| File | URL | Contents |
+| --- | --- | --- |
+| `llms.txt` | [`https://mtaapi.dev/docs/llms.txt`](https://mtaapi.dev/docs/llms.txt) | A structured index of every page with titles, links, and descriptions — a sitemap for LLMs. |
+| `llms-full.txt` | [`https://mtaapi.dev/docs/llms-full.txt`](https://mtaapi.dev/docs/llms-full.txt) | The entire documentation site concatenated into one file for direct context loading. |
+
+Use `llms.txt` when a tool should discover and fetch only the relevant pages, and `llms-full.txt` when you want to drop the whole corpus into a model's context window.
+
+## Claude skill
+
+These docs are also published as an installable [Claude skill](https://www.anthropic.com/news/skills), described by a `skill.md` manifest that summarizes the SDK's capabilities, methods, and best practices for agents:
+
+```text
+https://mtaapi.dev/docs/skill.md
+```
+
+Add it to any agent that supports the [agent skills](https://agentskills.io) spec with the skills CLI:
+
+```bash
+npx skills add https://mtaapi.dev/docs
+```
+
+This loads the MTA API capabilities into the agent's context so it can reference the guides and reference material on demand while you work. MCP-compatible tools can also read the `skill.md` content directly.
+
+## Markdown for any page
+
+Every page is available as raw Markdown — just append `.md` to its URL. For example:
+
+```text
+https://www.mtaapi.dev/docs/guides/subway-arrivals.md
+```
+
+This is handy for piping a single page into a prompt or script without any HTML.
+
+<Note>
+  All of the above — the MCP server, `llms.txt`, `llms-full.txt`, `skill.md`, and per-page Markdown — are generated and hosted automatically. There's nothing to configure and no extra cost.
+</Note>

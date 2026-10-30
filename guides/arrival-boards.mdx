@@ -1,0 +1,76 @@
+---
+title: "Build a live departure board"
+description: "Use mta.subway.arrivalBoard() and mta.bus.arrivalBoard() to render a departure board: the nearest stops to a coordinate, each with its next arrivals grouped by direction or route."
+sidebarTitle: "Arrival Boards"
+---
+
+An arrival board answers "what's leaving near me, right now?" in a single call. Instead of finding nearby stops and then making one arrivals request per stop, `mta.subway.arrivalBoard()` and `mta.bus.arrivalBoard()` return the closest stations to a coordinate with their upcoming arrivals already attached and grouped — perfect for a lobby screen, a "near me" tab, or a kiosk.
+
+<Note>
+  Arrival boards require a hosted `apiKey`. See [Authentication](/authentication) to get one.
+</Note>
+
+## Prerequisites
+
+- `mta-js` installed (`npm install mta-js`)
+- An MTA API key set as `MTA_API_KEY` in your environment
+
+<Steps>
+  <Step title="Fetch the subway board for a location">
+    Pass a `lat` / `lon` and how big you want the board. `limitStations` caps how many stations come back (max 20); `limitArrivals` caps arrivals per direction (max 10).
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    
+    const board = await mta.subway.arrivalBoard({
+      lat: 40.7356,
+      lon: -73.9906,
+      limitStations: 5,
+      limitArrivals: 3,
+    })
+    ```
+  </Step>
+  <Step title="Render each station and its directions">
+    Each entry has a `station`, its `distanceMeters`, and a `directions` array. Each direction bundles a `direction`, an optional `headsign`, and that direction's `arrivals`.
+
+    ```typescript
+    for (const { station, distanceMeters, directions } of board) {
+      console.log(`${station.name} (${Math.round(distanceMeters)}m)`)
+      for (const dir of directions) {
+        for (const arrival of dir.arrivals) {
+          console.log(`  ${arrival.route.shortName} ${dir.headsign ?? dir.direction} — ${arrival.minutes} min`)
+        }
+      }
+    }
+    ```
+  </Step>
+  <Step title="Do the same for buses">
+    `mta.bus.arrivalBoard()` is the bus counterpart. It uses `limitStops` instead of `limitStations`, and groups each stop's arrivals by `route` (with an optional `headsign`) rather than by compass direction.
+
+    ```typescript
+    const busBoard = await mta.bus.arrivalBoard({
+      lat: 40.7421,
+      lon: -73.9914,
+      route: 'M23',
+      limitStops: 3,
+      limitArrivals: 2,
+    })
+    
+    for (const { stop, routes } of busBoard) {
+      for (const r of routes) {
+        console.log(`${stop.name} — ${r.route.shortName} ${r.headsign ?? ''}`)
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Poll the board every 30 seconds to stay in sync with the realtime feed. Keep the limits small for a glanceable display — 5 stations with 3 arrivals each reads well on a single screen.
+</Tip>
+
+<Note>
+  Prefer the raw REST shape? See the [Subway Arrival Board](/api-reference/subway-arrival-board) and [Bus Arrival Board](/api-reference/bus-arrival-board) API reference pages.
+</Note>

@@ -1,0 +1,22 @@
+---
+title: "mta.bus.routeStops() — ordered stops on a route"
+description: "Reference for GET /api/v1/bus/routes/{route}/stops. Get the ordered stops a bus route serves, optionally hydrated with arrivals."
+sidebarTitle: "Bus Route Stops"
+openapi: "GET /api/v1/bus/routes/{route}/stops"
+---
+
+Returns the ordered stops a bus route serves. Pass the route in the path (for example `M23`) and an optional `direction` filter. Set `includeArrivals=true` to attach live arrivals to each stop (bounded by `limitArrivals` and `limitStops`).
+
+The response is a `RouteStopsResponse`: `{ route, mode, directions: [{ direction, headsigns?, stops: [...] }] }`, where each stop carries an optional `arrivals` array when hydrated.
+
+### SDK
+
+```typescript
+const routeStops = await mta.bus.routeStops({ route: 'M23' })
+
+for (const pattern of routeStops.directions) {
+  console.log(pattern.direction, pattern.stops.length, 'stops')
+}
+```
+
+See the [Routes & Stations guide](/guides/routes-and-stations).

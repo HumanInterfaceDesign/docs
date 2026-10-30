@@ -1,0 +1,284 @@
+---
+title: "Find MTA stops near any latitude and longitude"
+description: "Use mta-js to discover nearby subway and bus stops for a given latitude and longitude, with support for filtering by transit mode."
+sidebarTitle: "Nearby Stops"
+---
+
+This guide shows you how to find MTA stops near a geographic coordinate using `mta.stops.near()`. You will obtain a latitude and longitude, query for nearby stops across one or more transit modes, and use the results to build features like "stops near me" or a stop picker for arrival lookups.
+
+<Steps>
+  <Step title="Obtain the user's coordinates">
+    You need a latitude and longitude to query nearby stops. In a browser, use the Geolocation API to get the user's current position.
+
+    ```typescript
+    function getCurrentPosition(): Promise<GeolocationCoordinates> {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('Geolocation is not supported by this browser.'))
+          return
+        }
+        navigator.geolocation.getCurrentPosition(
+          (position) => resolve(position.coords),
+          (error) => reject(error)
+        )
+      })
+    }
+    
+    const coords = await getCurrentPosition()
+    const { latitude: lat, longitude: lon } = coords
+    ```
+
+    For server-side code or testing, use hardcoded coordinates:
+
+    ```typescript
+    // Times Square, Manhattan
+    const lat = 40.7580
+    const lon = -73.9855
+    ```
+  </Step>
+  <Step title="Call mta.stops.near()">
+    Pass `lat`, `lon`, and a `modes` array to `mta.stops.near()`. The `modes` array accepts `'subway'`, `'bus'`, or both.
+
+    ```typescript
+    import { MTA } from 'mta-js'
+    
+    const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+    
+    const data = await mta.stops.near({
+      lat: 40.7580,
+      lon: -73.9855,
+      modes: ['subway', 'bus'],
+    })
+    ```
+
+    **Example response:**
+
+    ```json
+    {
+      "stops": [
+        {
+          "stopId": "R16",
+          "name": "Times Sq-42 St",
+          "lat": 40.7549,
+          "lon": -73.9870,
+          "mode": "subway",
+          "routes": ["N", "Q", "R", "W"],
+          "distanceMeters": 348
+        },
+        {
+          "stopId": "902",
+          "name": "Times Sq-42 St",
+          "lat": 40.7553,
+          "lon": -73.9877,
+          "mode": "subway",
+          "routes": ["1", "2", "3"],
+          "distanceMeters": 412
+        },
+        {
+          "stopId": "MTA_305423",
+          "name": "8 Av & W 42 St",
+          "lat": 40.7572,
+          "lon": -73.9910,
+          "mode": "bus",
+          "routes": ["M42"],
+          "distanceMeters": 517
+        }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Process and display results sorted by distance">
+    The response is typically already sorted by `distanceMeters`. Map over the stops to build a display list.
+
+    ```typescript
+    const { stops } = data
+    
+    for (const stop of stops) {
+      const distance =
+        stop.distanceMeters < 1000
+          ? `${stop.distanceMeters}m`
+          : `${(stop.distanceMeters / 1000).toFixed(1)}km`
+    
+      console.log(`${stop.name} (${stop.mode.toUpperCase()})`)
+      console.log(`  Routes: ${stop.routes.join(', ')}`)
+      console.log(`  Distance: ${distance}`)
+      console.log(`  Stop ID: ${stop.stopId}`)
+    }
+    ```
+  </Step>
+  <Step title="Link a stop to arrivals">
+    Once you have a `stopId`, you can pass it directly to `mta.subway.arrivals()` to fetch real-time arrivals for that stop. This lets you build a "tap a stop, see arrivals" flow.
+
+    ```typescript
+    const nearestSubwayStop = stops.find((s) => s.mode === 'subway')
+    
+    if (nearestSubwayStop) {
+      const arrivals = await mta.subway.arrivals({
+        stopId: nearestSubwayStop.stopId,
+        route: nearestSubwayStop.routes[0],
+      })
+      console.log(arrivals)
+    }
+    ```
+  </Step>
+</Steps>
+
+## Complete example
+
+```typescript
+import { MTA } from 'mta-js'
+
+const mta = new MTA({ apiKey: process.env.MTA_API_KEY })
+
+interface NearbyStop {
+  stopId: string
+  name: string
+  lat: number
+  lon: number
+  mode: string
+  routes: string[]
+  distanceMeters: number
+}
+
+function getCurrentPosition(): Promise<GeolocationCoordinates> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation is not supported by this browser.'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve(position.coords),
+      (error) => reject(error)
+    )
+  })
+}
+
+async function findNearbyStops(
+  modes: Array<'subway' | 'bus'> = ['subway', 'bus']
+): Promise<NearbyStop[]> {
+  const coords = await getCurrentPosition()
+
+  const data = await mta.stops.near({
+    lat: coords.latitude,
+    lon: coords.longitude,
+    modes,
+  })
+
+  return data.stops
+}
+
+async function showNearbyArrivals(): Promise<void> {
+  try {
+    const stops = await findNearbyStops(['subway'])
+
+    if (stops.length === 0) {
+      console.log('No subway stops found nearby.')
+      return
+    }
+
+    const nearest = stops[0]
+    console.log(`Nearest stop: ${nearest.name} (${nearest.distanceMeters}m away)`)
+    console.log(`Routes: ${nearest.routes.join(', ')}`)
+
+    // Fetch arrivals for the first route at the nearest stop
+    const arrivals = await mta.subway.arrivals({
+      stopId: nearest.stopId,
+      route: nearest.routes[0],
+    })
+
+    const now = Math.floor(Date.now() / 1000)
+
+    for (const arrival of arrivals.arrivals) {
+      const minutesAway = Math.round((arrival.arrivalTime - now) / 60)
+      console.log(`  ${nearest.routes[0]} train — ${minutesAway} min`)
+    }
+  } catch (error) {
+    console.error('Failed to fetch nearby stops:', error)
+  }
+}
+
+await showNearbyArrivals()
+```
+
+## Route-aware lookups
+
+When you already know which route the user cares about, pass a `route` to `mta.stops.near()` so the response only includes stops served by that route. Combine it with `radiusMeters` and `limit` to scope the search precisely.
+
+```typescript
+// Nearest M23 SBS bus stops within 800m of 23rd & 3rd Ave
+const nearbyM23 = await mta.stops.near({
+  lat: 40.7356,
+  lon: -73.9804,
+  modes: ['bus'],
+  route: 'M23',
+  includeRoutes: true,
+  radiusMeters: 800,
+  limit: 5,
+})
+
+for (const stop of nearbyM23.stops) {
+  console.log(`${stop.name} — ${Math.round(stop.distanceMeters)}m`)
+}
+```
+
+This is useful for "where do I catch the L train from here?" flows: pass `route: 'L'` and `modes: ['subway']` to skip every other line in the response.
+
+## Filtering by mode
+
+Pass only the modes you need to keep the response focused. This reduces payload size and simplifies the results you render.
+
+```typescript
+// Subway stops only
+const subwayOnly = await mta.stops.near({
+  lat: 40.7580,
+  lon: -73.9855,
+  modes: ['subway'],
+})
+
+// Bus stops only
+const busOnly = await mta.stops.near({
+  lat: 40.7580,
+  lon: -73.9855,
+  modes: ['bus'],
+})
+```
+
+If your app shows a mode switcher (e.g., subway / bus tabs), call `mta.stops.near()` with the active mode rather than fetching all modes and filtering client-side.
+
+## Using results with arrivals
+
+You can chain `stops.near()` directly into `subway.arrivals()` to create a fully location-aware arrivals lookup.
+
+```typescript
+async function arrivalsNearMe(route: string) {
+  const coords = await getCurrentPosition()
+
+  const { stops } = await mta.stops.near({
+    lat: coords.latitude,
+    lon: coords.longitude,
+    modes: ['subway'],
+  })
+
+  // Find the nearest stop that serves the requested route
+  const matchingStop = stops.find((s) => s.routes.includes(route))
+
+  if (!matchingStop) {
+    console.log(`No nearby stop serves the ${route} train.`)
+    return []
+  }
+
+  const data = await mta.subway.arrivals({
+    stopId: matchingStop.stopId,
+    route,
+  })
+
+  return data.arrivals
+}
+
+// Get upcoming A trains near the user's location
+const arrivals = await arrivalsNearMe('A')
+```
+
+<Tip>
+  The MTA subway system covers the five boroughs, but stops are clustered in Manhattan and dense areas of Brooklyn and Queens. If you query for stops in a sparse area or far from a transit hub, the nearest stop could be over a kilometer away. Consider setting a maximum distance threshold in your UI and showing a message like "No stops within 800m" rather than silently returning a very distant result.
+</Tip>
